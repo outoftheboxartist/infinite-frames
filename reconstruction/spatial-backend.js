@@ -109,6 +109,22 @@ root.IFSpatial.createBackend=function(config){
       if(spatial)return spatial.search(query,options);
       const q=String(query||"").toLowerCase();return latest().boundaries.filter(r=>String(r.name||"").toLowerCase().startsWith(q)).slice(0,30).map(x=>({id:x.id,name:x.name,frameN:x.frameN,bbox:root.IFSpatial.boundsFromPath(x.d),color:x.color}))
     },
+    async browseRegions(options={}){
+      await init();
+      if(spatial)return spatial.browse(options);
+      const limit=Math.max(1,Math.min(80,options.limit||48)),color=String(options.color||"").toLowerCase(),after=options.after||"";
+      const rows=latest().boundaries.filter(b=>!color||String(b.color||"").toLowerCase()===color)
+        .map(b=>({key:"b:"+b.id,id:b.id,name:b.name||"Untitled curve",color:b.color||"",author:b.founder||b.author||"",frameN:b.frameN||1}))
+        .sort((a,b)=>a.key.localeCompare(b.key));
+      const start=rows.findIndex(b=>b.key>after),found=start<0?[]:rows.slice(start,start+limit+1);
+      const items=found.slice(0,limit);
+      return {items,hasMore:found.length>limit,nextCursor:items.length?items[items.length-1].key:null}
+    },
+    async availableColors(){
+      await init();
+      if(spatial)return spatial.palette({limit:64});
+      return [...new Set(latest().boundaries.map(b=>String(b.color||"").toLowerCase()).filter(c=>/^#[a-f0-9]{6}$/.test(c)))].sort().slice(0,64)
+    },
     async regionById(id){await init();return spatial?spatial.resolve(id):latest().boundaries.find(b=>b.id===id)},
     async visibleRegions(rect,options){await init();return spatial?spatial.viewport(rect,options):latest().boundaries.filter(b=>root.IFSpatial.intersects(root.IFSpatial.boundsFromPath(b.d),rect)).slice(0,120)},
     async regionCount(){await init();return spatial?spatial.count():latest().boundaries.length},
