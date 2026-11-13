@@ -120,7 +120,8 @@ class Store{
     const t=this.db.transaction(["records"],"readonly"),store=t.objectStore("records"),range=root.IDBKeyRange||IDBKeyRange;
     const filtered=Boolean(color&&/^#[a-f0-9]{6}$/.test(color));
     const index=filtered?store.index("by_color_key"):store;
-    const bounds=filtered?range.bound([color,after||"b:"],[color,"b:\\uffff"],Boolean(after),false):range.bound(after||"b:","b:\\uffff",Boolean(after),false);
+    const upper="b:"+String.fromCharCode(65535);
+    const bounds=filtered?range.bound([color,after||"b:"],[color,upper],Boolean(after),false):range.bound(after||"b:",upper,Boolean(after),false);
     const rows=[],asRow=m=>({id:m.id,name:m.name||"Untitled curve",color:m.color||"",author:m.founder||m.author||"",frameN:m.frameN,bbox:m.bbox,parentId:m.parentId,key:m.key});
     return new Promise((resolve,reject)=>{
       const request=index.openCursor(bounds);
@@ -149,7 +150,7 @@ class Store{
         if(!cursor||colors.length>=limit){resolve(colors);return}
         const color=cursor.key;
         if(typeof color==="string"&&/^#[a-f0-9]{6}$/.test(color))colors.push(color);
-        cursor.continue(String(color)+"\\uffff");
+        cursor.continue(String(color)+String.fromCharCode(65535));
       };
     });
   }
