@@ -88,7 +88,7 @@ language sql stable security invoker set search_path=public
 as $$
   select r.* from public.if_spatial_regions r
   where r.world_id = p_world and r.frame_n = p_frame and r.published
-    and r.bbox && box(point(p_xmin,p_ymin),point(p_xmax,p_ymax))
+    and r.bbox && box(point(p_min_x,p_min_y),point(p_max_x,p_max_y))
   order by (r.max_x-r.min_x)*(r.max_y-r.min_y) asc, r.id
   limit least(greatest(p_limit,1),500);
 $$;
