@@ -13,16 +13,16 @@ create table if not exists public.if_spatial_regions (
     author_display text null,
     color text null,
     tags text[] not null default '{}',
-    xmin double precision not null,
-    ymin double precision not null,
-    xmax double precision not null,
-    ymax double precision not null,
-    bbox box generated always as (box(point(xmin,ymin),point(xmax,ymax))) stored,
+    min_x double precision not null,
+    min_y double precision not null,
+    max_x double precision not null,
+    max_y double precision not null,
+    bbox box generated always as (box(point(min_x,min_y),point(max_x,max_y))) stored,
     geometry_key text not null,
     geometry_version integer not null default 1 check (geometry_version >= 1),
     published boolean not null default true,
     created_at timestamptz not null default now(),
-    check (xmin <= xmax and ymin <= ymax),
+    check (min_x <= max_x and min_y <= max_y),
     check (length(id) between 1 and 160),
     check (length(world_id) between 1 and 80),
     check (length(name) <= 160),
@@ -80,8 +80,8 @@ on conflict (id) do nothing;
 -- Spatial search function uses GiST bbox overlap and obeys caller RLS.
 create or replace function public.if_spatial_viewport(
     p_world text, p_frame integer,
-    p_xmin double precision, p_ymin double precision,
-    p_xmax double precision, p_ymax double precision,
+    p_min_x double precision, p_min_y double precision,
+    p_max_x double precision, p_max_y double precision,
     p_limit integer default 200
 ) returns setof public.if_spatial_regions
 language sql stable security invoker set search_path=public
@@ -89,7 +89,7 @@ as $$
   select r.* from public.if_spatial_regions r
   where r.world_id = p_world and r.frame_n = p_frame and r.published
     and r.bbox && box(point(p_xmin,p_ymin),point(p_xmax,p_ymax))
-  order by (r.xmax-r.xmin)*(r.ymax-r.ymin) asc, r.id
+  order by (r.max_x-r.min_x)*(r.max_y-r.min_y) asc, r.id
   limit least(greatest(p_limit,1),500);
 $$;
 
