@@ -2,7 +2,8 @@
 
 One canvas. Infinite perspectives. No final frame.
 
-`index.html` is the Infinite Frames Playground page, imported from the published artifact
-https://claude.ai/artifact/EeDpyzAcbKfyCkKKbbF5Mi (version 1794390078-b1f6).
+**Start with [HANDOFF.md](HANDOFF.md)**: what the project is, where everything lives, the data model, recent fixes and open requests.
 
-The artifact's shared database (contributions etc.) is not included here.
+- Main app: `app/index.html` (live at https://claude.ai/artifact/KY2rRser7qDWzVvYQjSMzT)
+- Offline preview with the current canvas: `app/local-preview.html`
+- Fish frame SVGs: `yin-yang-svg/`
