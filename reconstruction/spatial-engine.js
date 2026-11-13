@@ -19,9 +19,16 @@ function boundsFromPath(d){
 }
 function entityBox(e){
   if(e.bbox&&Number.isFinite(e.bbox.x))return e.bbox;
-  if(e.type==="image"&&Number.isFinite(e.x))return{x:e.x,y:e.y,w:e.w||1,h:e.h||1,cx:e.x+(e.w||1)/2,cy:e.y+(e.h||1)/2};
-  if(e.type==="vector")return boundsFromPath((e.paths||[]).map(x=>x.d).join(" "));
-  return boundsFromPath(e.d);
+  const b=e.type==="image"&&Number.isFinite(e.x)?
+    {x:e.x,y:e.y,w:e.w||1,h:e.h||1,cx:e.x+(e.w||1)/2,cy:e.y+(e.h||1)/2}:
+    e.type==="vector"?boundsFromPath((e.paths||[]).map(x=>x.d).join(" ")):boundsFromPath(e.d);
+  const t=e.t;if(!t||(!t.x&&!t.y&&(t.s==null||t.s===1)&&!t.r))return b;
+  const cx=Number.isFinite(e.cx)?e.cx:b.cx,cy=Number.isFinite(e.cy)?e.cy:b.cy;
+  const sin=Math.sin((t.r||0)*Math.PI/180),cos=Math.cos((t.r||0)*Math.PI/180),scale=t.s||1;
+  const corners=[[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]];
+  const points=corners.map(([x,y])=>{const dx=(x-cx)*scale,dy=(y-cy)*scale;return[cx+(t.x||0)+dx*cos-dy*sin,cy+(t.y||0)+dx*sin+dy*cos]});
+  const xs=points.map(p=>p[0]),ys=points.map(p=>p[1]),x=Math.min(...xs),y=Math.min(...ys),w=Math.max(...xs)-x,h=Math.max(...ys)-y;
+  return {x,y,w,h,cx:x+w/2,cy:y+h/2};
 }
 function intersects(box,view,padding=0){return box.x<=view.x+view.w+padding&&box.y<=view.y+view.h+padding&&box.x+box.w>=view.x-padding&&box.y+box.h>=view.y-padding}
 function split(e,type){
@@ -90,14 +97,14 @@ class Store{
   async resolve(id,type="boundary"){const key=(type==="boundary"?"b:":"i:")+id;const [m,g]=await Promise.all([this.metadata(id,type),this.geometry(key)]);return join(m,g)}
   async search(term,options={}){
     await this.open();const q=tidy(term);if(!q)return[];
-    const max=Math.max(1,Math.min(80,options.limit||30)),t=this.db.transaction(["records"],"readonly"),store=t.objectStore("records");
+    const max=Math.max(1,Math.min(80,options.limit||30));
     const out=[],seen=new Set;
     const collect=rows=>{for(const m of rows){if(m.recordType!=="boundary"||seen.has(m.key))continue;
       if(options.frameN&&m.frameN!==options.frameN)continue;
       seen.add(m.key);out.push({id:m.id,name:m.name||"Untitled curve",color:m.color||"",author:m.founder||m.author||"",frameN:m.frameN,bbox:m.bbox,parentId:m.parentId});if(out.length>=max)break}};
     for(const key of ["by_name","by_author","by_color"]){
       if(out.length>=max)break;
-      const index=store.index(key),lower=root.IDBKeyRange||IDBKeyRange;
+      const t=this.db.transaction(["records"],"readonly"),index=t.objectStore("records").index(key),lower=root.IDBKeyRange||IDBKeyRange;
       collect(await request(index.getAll(lower.bound(q,q+"\uffff"),max)))
     }
     return out.slice(0,max);
@@ -113,5 +120,5 @@ class Store{
   }
   async count(){await this.open();const t=this.db.transaction(["records"],"readonly");return request(t.objectStore("records").count())}
 }
-root.IFSpatial={Store,split,join,boundsFromPath,intersects};
+root.IFSpatial={Store,split,join,boundsFromPath,entityBox,intersects};
 })(typeof window!=="undefined"?window:globalThis);
