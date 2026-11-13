@@ -4,7 +4,7 @@
    and the Supabase adapter are separate rollouts. */
 (function(root){
 "use strict";
-const NAME="infinite-frames-spatial-v1", VERSION=1, LIMIT=200;
+const NAME="infinite-frames-spatial-v1", VERSION=2, LIMIT=200;
 const request=r=>new Promise((resolve,reject)=>{r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error||new Error("IndexedDB request failed"))});
 const completed=t=>new Promise((resolve,reject)=>{t.oncomplete=()=>resolve();t.onerror=()=>reject(t.error||new Error("IndexedDB transaction failed"));t.onabort=()=>reject(t.error||new Error("IndexedDB transaction aborted"))});
 const tidy=x=>String(x==null?"":x).toLocaleLowerCase().trim();
@@ -56,6 +56,8 @@ class Store{
           const v=db.createObjectStore("records",{keyPath:"key"});
           v.createIndex("by_name","nameLower");v.createIndex("by_author","authorLower");v.createIndex("by_color","colorLower");v.createIndex("by_frame","frameN");v.createIndex("by_parent","parentId");
         }
+        const records=r.transaction.objectStore("records");
+        if(!records.indexNames.contains("by_color_key"))records.createIndex("by_color_key",["colorLower","key"]);
         if(!db.objectStoreNames.contains("geometry"))db.createObjectStore("geometry",{keyPath:"key"});
         if(!db.objectStoreNames.contains("state"))db.createObjectStore("state",{keyPath:"key"});
       };
@@ -108,6 +110,48 @@ class Store{
       collect(await request(index.getAll(lower.bound(q,q+"\uffff"),max)))
     }
     return out.slice(0,max);
+  }
+  /* Paged browse loads metadata only, never path geometry.
+     Primary key and [color,key] indexes avoid scanning earlier pages. */
+  async browse(options={}){
+    await this.open();
+    const limit=Math.max(1,Math.min(80,options.limit||48));
+    const color=tidy(options.color),after=options.after||null;
+    const t=this.db.transaction(["records"],"readonly"),store=t.objectStore("records"),range=root.IDBKeyRange||IDBKeyRange;
+    const filtered=Boolean(color&&/^#[a-f0-9]{6}$/.test(color));
+    const index=filtered?store.index("by_color_key"):store;
+    const bounds=filtered?range.bound([color,after||"b:"],[color,"b:\\uffff"],Boolean(after),false):range.bound(after||"b:","b:\\uffff",Boolean(after),false);
+    const rows=[],asRow=m=>({id:m.id,name:m.name||"Untitled curve",color:m.color||"",author:m.founder||m.author||"",frameN:m.frameN,bbox:m.bbox,parentId:m.parentId,key:m.key});
+    return new Promise((resolve,reject)=>{
+      const request=index.openCursor(bounds);
+      request.onerror=()=>reject(request.error||new Error("Could not browse indexed curves"));
+      request.onsuccess=()=>{
+        const cursor=request.result;
+        if(!cursor){resolve({items:rows,hasMore:false,nextCursor:null});return}
+        const item=cursor.value;
+        if(item.recordType==="boundary"){
+          if(rows.length>=limit){resolve({items:rows,hasMore:true,nextCursor:rows[rows.length-1].key});return}
+          rows.push(asRow(item));
+        }
+        cursor.continue();
+      };
+    });
+  }
+  /* One palette entry per indexed color; no geometry loaded. */
+  async palette(options={}){
+    await this.open();
+    const limit=Math.max(1,Math.min(120,options.limit||48)),t=this.db.transaction(["records"],"readonly"),index=t.objectStore("records").index("by_color"),colors=[];
+    return new Promise((resolve,reject)=>{
+      const request=index.openKeyCursor();
+      request.onerror=()=>reject(request.error||new Error("Could not browse colors"));
+      request.onsuccess=()=>{
+        const cursor=request.result;
+        if(!cursor||colors.length>=limit){resolve(colors);return}
+        const color=cursor.key;
+        if(typeof color==="string"&&/^#[a-f0-9]{6}$/.test(color))colors.push(color);
+        cursor.continue(String(color)+"\\uffff");
+      };
+    });
   }
   async viewport(view,options={}){
     await this.open();
