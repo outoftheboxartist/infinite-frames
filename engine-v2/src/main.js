@@ -2,6 +2,7 @@ import { createDemoWorld } from "./model.js";
 import { Scene } from "./scene.js";
 import { CanvasRenderer, viewRect } from "./renderer.js";
 import { PublishedWorldReader,orderScene,expandRect,containsRect } from "./live.js";
+import { fetchLegacyArchive,convertArchiveToScene } from "./legacy.js";
 
 const $ = id => document.getElementById(id);
 const canvas = $("world"), scene = new Scene(), renderer = new CanvasRenderer(canvas,scene);
@@ -12,7 +13,7 @@ const pointers = new Map();
 let single=null, pinch=null, interacted=false, noticeTimer=null;
 let source="demo",reader=null,liveAbort=null,liveTimer=null,liveSequence=0;
 let loadedBounds=null,loadedExtent=Infinity,loadedFrame=1;
-let liveFrames=[{frame_n:1,status:"open"}],liveBusy=false;
+let liveFrames=[{frame_n:1,status:"open"}],liveBusy=false,snapshotData=null;
 scene.onAsset=()=>invalidate(false);
 function showLiveStatus(message,isError=false) {
   const node=$("live-status");node.hidden=!message;
@@ -20,10 +21,12 @@ function showLiveStatus(message,isError=false) {
 }
 function syncControls() {
   $("demo-controls").hidden=source!=="demo";
-  $("live-controls").hidden=source!=="live";
+  $("live-controls").hidden=source==="demo";
   $("data-note").textContent=source==="demo"
     ?"SYNTHETIC CURVES · ORIGINAL GEOMETRY PRESERVED · NO DATA WRITES"
-    :"PUBLISHED SUPABASE GEOMETRY · VIEWPORT-ONLY LOADING · READ ONLY";
+    :source==="snapshot"
+      ?"SAVED GITHUB ARTWORK · READ-ONLY REFERENCE · ORIGINAL PATHS UNCHANGED"
+      :"PUBLISHED SUPABASE GEOMETRY · VIEWPORT-ONLY LOADING · READ ONLY";
 }
 function liveView(){
   const rect=viewRect(camera,renderer.cssWidth,renderer.cssHeight);
@@ -102,6 +105,44 @@ async function openLiveWorld() {
     if(source!=="live")return;
     $("mode-label").textContent="SHARED WORLD ERROR";
     showLiveStatus("Could not list published frames: "+String(error.message||error),true);
+  }
+}
+async function loadSnapshotFrame() {
+  if(source!=="snapshot"||!snapshotData)return;
+  const frameN=Number($("frame-select").value)||snapshotData.frames.at(-1)?.n||1;
+  const nodes=orderScene(convertArchiveToScene(snapshotData,frameN));
+  $("mode-label").textContent="INDEXING ARCHIVED FRAME…";
+  await scene.setWorld(nodes);
+  if(source!=="snapshot")return;
+  visibleIds=[];lastQuery={candidates:0,culledByLOD:0,queryMs:0};
+  const curves=nodes.filter(n=>n.kind==="boundary").length;
+  const artwork=nodes.filter(n=>n.kind==="item").length;
+  showLiveStatus("");
+  $("mode-label").textContent="SAVED FRAME "+frameN+" · "+artwork+" PIECES";
+  notice("Archived frame "+frameN+": "+curves+" curves + "+artwork+" art pieces (read only)");
+  needQuery=true;invalidate();
+}
+async function openSnapshotWorld(){
+  source="snapshot";++liveSequence;liveAbort?.abort();clearTimeout(liveTimer);
+  loadedBounds=null;loadedExtent=Infinity;visibleIds=[];
+  scene.ready=false;scene.nodes=[];scene.byId.clear();scene.pathCache.clear();
+  syncControls();showLiveStatus("Retrieving archived artwork from your GitHub repository…");
+  $("mode-label").textContent="LOADING SAVED V1 ART…";invalidate(false);
+  try{
+    snapshotData=snapshotData||await fetchLegacyArchive();
+    if(source!=="snapshot")return;
+    const select=$("frame-select");
+    select.replaceChildren(...snapshotData.frames.map(frame=>{
+      const option=document.createElement("option");
+      option.value=frame.n;option.textContent="Frame "+frame.n;return option;
+    }));
+    select.value=String(snapshotData.frames.at(-1)?.n||1);
+    await loadSnapshotFrame();
+  }catch(error){
+    if(source!=="snapshot")return;
+    $("mode-label").textContent="ARCHIVE ERROR";
+    showLiveStatus("Could not read the saved artwork: "+String(error.message||error),true);
+    console.error("Archive read failed",error);
   }
 }
 function openDemoWorld(){
@@ -258,9 +299,9 @@ $("reset-view").onclick=$("fit-view").onclick=()=>{camera.x=500;camera.y=500;cam
 $("close-inspector").onclick=()=>inspect(null);
 $("focus-region").onclick=()=>focus(scene.byId.get(selectedId));
 $("sample-count").onchange=event=>{if(source==="demo")loadWorld(+event.target.value)};
-$("world-mode").onchange=event=>event.target.value==="live"?openLiveWorld():openDemoWorld();
-$("frame-select").onchange=()=>{loadedBounds=null;refreshLive(true)};
-$("sync-world").onclick=()=>{loadedBounds=null;refreshLive(true)};
+$("world-mode").onchange=event=>event.target.value==="live"?openLiveWorld():event.target.value==="snapshot"?openSnapshotWorld():openDemoWorld();
+$("frame-select").onchange=()=>{if(source==="snapshot")loadSnapshotFrame();else{loadedBounds=null;refreshLive(true)}};
+$("sync-world").onclick=()=>{if(source==="snapshot"){snapshotData=null;openSnapshotWorld()}else{loadedBounds=null;refreshLive(true)}};
 function resize(){
   renderer.resize();
   invalidate();
