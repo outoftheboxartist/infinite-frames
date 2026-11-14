@@ -359,13 +359,40 @@ function combine(base,cloud){
    places:base.places,
    async publish(payload){await cloud.publish(payload);previews.clear();try{await base.publish(payload)}catch(e){console.warn("Cloud saved successfully, but offline mirror is unavailable",e)}notify({type:"cloud-status",row:{online:true,authenticated:true}})},
    async loadView(view,options){
-     const [local,remote]=await Promise.allSettled([base.loadView(view,options),cloud.viewport(view,options)]);
-     if(local.status==="rejected"&&remote.status==="rejected")throw Error("Both local and shared spatial loading failed");
-     if(remote.status==="rejected"){connected=false;console.warn("Shared geometry temporarily offline",remote.reason)}
-     else connected=true;
-     const a=local.status==="fulfilled"?local.value:{boundaries:[],items:[]},b=remote.status==="fulfilled"?remote.value:{boundaries:[],items:[]};
-     const dedupe=(x,y)=>{const map=new Map();for(const o of x||[])map.set(o.id,o);for(const o of y||[])map.set(o.id,o);return [...map.values()]};
-     return{boundaries:dedupe(a.boundaries,b.boundaries),items:dedupe(a.items,b.items),count:(a.count||0)+(b.count||0)};
+     // Local geometry must never wait for a slow Supabase request.
+     const frames=(options.frameNs||[options.frameN||1]).join(",");
+     const width=1000/Math.max(1,view.z||1);
+     const key=[frames,Math.round(view.x/(width*.2)),Math.round(view.y/(width*.2)),Math.round(Math.log2(Math.max(1,view.z||1))*8)].join(":");
+     const local=base.loadView(view,options).catch(e=>({boundaries:[],items:[],count:0,error:e}));
+     const combined=(a,b)=>{
+       const dedupe=(x,y)=>{const map=new Map();for(const o of x||[])map.set(o.id,o);for(const o of y||[])map.set(o.id,o);return [...map.values()]};
+       return{boundaries:dedupe(a.boundaries,b?.boundaries),items:dedupe(a.items,b?.items),count:(a.count||0)+(b?.count||0)};
+     };
+     if(backend._readyViewport&&backend._readyViewport.key===key){
+       const data=backend._readyViewport.data;
+       return combined(await local,data)
+     }
+     const remotePromise=cloud.viewport(view,options);
+     const first=await Promise.race([
+       remotePromise.then(data=>({data}),error=>({error})),
+       delay(850).then(()=>({pending:true}))
+     ]);
+     const localData=await local;
+     if(first.data){connected=true;backend._readyViewport={key,data:first.data};return combined(localData,first.data)}
+     if(first.error){
+       connected=false;console.warn("Shared viewport temporarily offline",first.error);
+       return localData
+     }
+     // A late network response updates the in-memory spatial view and triggers
+     // one subsequent paint. Superseded viewports are discarded.
+     backend._pendingViewKey=key;
+     remotePromise.then(data=>{
+       if(backend._pendingViewKey===key){
+         connected=true;backend._readyViewport={key,data};
+         notify({type:"refresh",row:{}})
+       }
+     }).catch(e=>{connected=false;console.warn("Cloud viewport retry next navigation",e)});
+     return localData
    },
    async regionById(id){
      const local=await base.regionById(id).catch(()=>null);
