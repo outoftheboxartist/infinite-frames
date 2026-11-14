@@ -34,3 +34,9 @@ test("remote archive can be fetched but never evaluated",async()=>{
  const got=await fetchLegacyArchive({fetcher});
  assert.equal(got.items.length,2);
 });
+
+test("same-origin JSON archive loads with exactly the original source data",async()=>{
+ const fetcher=async(url)=>{assert.equal(url,"./data/legacy-five-frames.json");return{ok:true,status:200,text:async()=>JSON.stringify(source)}};
+ const data=await fetchLegacyArchive({fetcher});
+ assert.deepEqual(data,source);
+});
