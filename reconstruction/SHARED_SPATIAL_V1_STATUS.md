@@ -1,3 +1,9 @@
+## Canonical shared world policy (2026-11-13)
+
+**Supabase is the only authority for published Infinite Frames artwork.** The active Vercel UI must never hydrate, render, search, paginate, mirror, or substitute `if-local-v1`, `infinite-frames-spatial-v1`, Claude seed/demo images, or locally published frames. Local browser data remains untouched solely for recovery and later opt-in migration; it is **not** a cloud backup. Cloud bundle/metadata caches are allowed only as derivatives of verified Supabase publications and must not import old local items. Offline failures must not be represented as an empty authoritative world or silently swap in older drawings. Empty Supabase state means a pristine editable Frame 1, not a seeded Prism demo. Cloud status is visible in the header. This decision supersedes the former hybrid local-first architecture in earlier sections below.
+
+Canonical deployed preview: https://infinite-frames-rebuild-preview-outoftheboxartists-projects.vercel.app
+
 # Infinite Frames: Shared Supabase Spatial Engine v1
 Status: **Deployed test build, authenticated browser end-to-end acceptance pending.**
 Canonical test URL: https://infinite-frames-rebuild-preview-outoftheboxartists-projects.vercel.app
