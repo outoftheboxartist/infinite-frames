@@ -46,11 +46,11 @@ function split(e,type){
 }
 function join(meta,geom){if(!meta)return null;const{key,recordType,nameLower,authorLower,colorLower,...rest}=meta;return{...rest,...(geom||{}) ,key:undefined}}
 class Store{
-  constructor(){this.db=null;this.meta=null;this.openPromise=null;this.cache=new Map()}
+  constructor(options={}){this.db=null;this.name=options.name||NAME;this.meta=null;this.openPromise=null;this.cache=new Map()}
   open(){if(this.openPromise)return this.openPromise;
     this.openPromise=new Promise((resolve,reject)=>{
       if(!root.indexedDB){reject(new Error("IndexedDB is unavailable"));return}
-      const r=root.indexedDB.open(NAME,VERSION);
+      const r=root.indexedDB.open(this.name,VERSION);
       r.onupgradeneeded=()=>{
         const db=r.result;
         if(!db.objectStoreNames.contains("records")){
