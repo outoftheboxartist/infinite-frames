@@ -52,8 +52,10 @@ export class CanvasRenderer {
       if(node.kind==="boundary"){
         const path=this.scene.path(id);
         if(path){
-          ctx.fillStyle=node.color;ctx.fill(path,"evenodd");
-          ctx.strokeStyle=node.depth===0?"#b6c4d633":"#ffffff2c";
+          ctx.fillStyle=node.color;
+          if(node.outlineOnly){ctx.save();ctx.globalAlpha*=0.045;ctx.fill(path,"evenodd");ctx.restore()}
+          else ctx.fill(path,"evenodd");
+          ctx.strokeStyle=node.outlineOnly?node.color:(node.depth===0?"#b6c4d633":"#ffffff2c");
           ctx.lineWidth=(node.depth<3?1:.6)*this.dpr/s;
           ctx.stroke(path);
           didDraw=true;
