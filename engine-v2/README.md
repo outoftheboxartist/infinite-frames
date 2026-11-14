@@ -6,7 +6,7 @@ A **new modular application** replacing the need to edit the compiled V1 bundle 
 
 - **Speed demo** (default): reproducible sample data at 4K, 14K or 40K curves, with no network requirement.
 - **Shared art**: read the existing Supabase world via public frame metadata, the read-only spatial RPC 'if_shared_viewport_page', and immutable geometry bundles in 'if-shared-bundles'. Camera movement queries nearby metadata only; referenced bundles are fetched lazily and cached. No private admin key, no insert/update/delete.
-- **Saved V1 art**: explicitly load the archived five-frame artwork from the existing public GitHub file 'rebuild/source/app/local-state.js'. Extract the JSON without executing JavaScript. Display real SVG vector fish and imported image content in **read-only** mode. Nothing from this archive uploads into Supabase.
+- **Saved V1 art**: explicitly load the archived five-frame artwork from same-origin 'data/legacy-five-frames.json', copied from the existing public GitHub file 'rebuild/source/app/local-state.js'. It contains preserved SVG paths and images in plain JSON, not executable JavaScript. Display real SVG vector fish and imported image content in **read-only** mode. Nothing from this archive uploads into Supabase.
 
 Frame picker switches which archived or published frame is shown. The window contains a region inspector and fast mobile pan/pinch gestures.
 
@@ -18,7 +18,7 @@ Frame picker switches which archived or published frame is shown. The window con
 - src/scene.js: node and parent-child relationships, exact SVG Path2D cache, lazy image cache and selected-region relationship cache.
 - src/renderer.js: Canvas2D viewport-only rendering. Supports source boundaries, vector, stroke, image and ancestor clipping.
 - src/live.js: live Supabase **read-only** adapter for the existing published metadata/bundle format.
-- src/legacy.js: read-only archived-V1 input adapter that never executes downloaded code.
+- src/legacy.js: read-only archived-V1 input adapter that handles same-origin JSON (and the old script format without executing code).
 - src/main.js: mobile camera controls, source switch, read status and frame selection.
 
 ## Important production facts (2026-11-14)
