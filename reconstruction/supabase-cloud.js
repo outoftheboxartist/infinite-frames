@@ -148,11 +148,23 @@ class Cloud{
   async viewport(view,options={}){
     const box=root.IFSpatial.viewportRect(view,options.padding??.55);
     const frames=options.frameNs||[options.frameN||1];
-    const rows=await this.request("/rest/v1/rpc/if_shared_viewport",{method:"POST",json:{
-      p_world:this.world,p_frames:frames,p_min_x:box.x,p_min_y:box.y,p_max_x:box.x+box.w,p_max_y:box.y+box.h,
-      p_limit:Math.max(1,Math.min(MAX_REMOTE_ROWS,options.limit||220))
-    },auth:false});
-    if(!Array.isArray(rows)||rows.length===0)return{boundaries:[],items:[],count:0};
+    const z=Math.max(1,view.z||1),pixelWorld=1000/z/390;
+    // Visually subpixel shapes stay in the database; load them at deeper zoom.
+    const minExtent=options.minExtent??pixelWorld*.28;
+    const pageSize=Math.min(MAX_REMOTE_ROWS,Math.max(80,options.limit||260));
+    const cap=Math.max(pageSize,Math.min(4800,options.maxRecords||(z>40?2600:z>5?1300:520)));
+    const rows=[];
+    for(let page=0;rows.length<cap;page++){
+      const batch=await this.request("/rest/v1/rpc/if_shared_viewport_page",{method:"POST",json:{
+        p_world:this.world,p_frames:frames,p_min_x:box.x,p_min_y:box.y,p_max_x:box.x+box.w,p_max_y:box.y+box.h,
+        p_min_extent:minExtent,p_offset:rows.length,p_limit:Math.min(pageSize,cap-rows.length)
+      },auth:false});
+      if(!Array.isArray(batch))throw Error("Cloud spatial index returned an invalid page");
+      rows.push(...batch);
+      if(batch.length<Math.min(pageSize,cap-(rows.length-batch.length)))break;
+      if(page>=25)break;
+    }
+    if(rows.length===0)return{boundaries:[],items:[],count:0};
     rows.forEach(x=>this.remoteById.set(x.id,x));
     // Merge records by immutable publication bundle; limit 3 simultaneous downloads.
     const paths=[...new Set(rows.map(x=>x.bundle_path))],results=new Map();
