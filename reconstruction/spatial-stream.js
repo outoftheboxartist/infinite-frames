@@ -76,10 +76,18 @@ Store.prototype.visibleMetadata=async function(view,options={}){
 };
 Store.prototype.loadViewport=async function(view,options={}){
   const metadata=await this.visibleMetadata(view,options);
-  const chunks=await Promise.all(metadata.map(async m=>{
-    const g=await this.geometry(m.key);return S.join(m,g);
+  const pairs=await Promise.all(metadata.map(async m=>{
+    const g=await this.geometry(m.key);
+    return {kind:m.recordType,entry:S.join(m,g)};
   }));
-  return {boundaries:chunks.filter(x=>x?.type==="boundary"),items:chunks.filter(x=>x?.type!=="boundary"),count:chunks.length};
+  // Classify by the indexed recordType, NOT the optional artwork.type.
+  // Founding boundaries ("Prism", etc.) have no `type` field in the original data.
+  // They must remain exact hit-testable SVG boundaries after lazy hydration.
+  return {
+    boundaries:pairs.filter(p=>p.kind==="boundary"&&p.entry?.d).map(p=>p.entry),
+    items:pairs.filter(p=>p.kind==="item"&&p.entry).map(p=>p.entry),
+    count:pairs.length
+  };
 };
 Store.prototype.getFramePreview=async function(frameN){
   await this.open();const t=this.db.transaction(["previews"],"readonly");
