@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#080a10"><title>Infinite Frames | Spatial Engine V2</title>
+<link rel="stylesheet" href="./style.css"></head>
+<body>
+<main id="app">
+  <canvas id="world" aria-label="Zoomable Infinite Frames curve world"></canvas>
+  <div class="vignette" aria-hidden="true"></div>
+  <header class="top">
+    <div class="brand"><span class="mark">IF</span><div><strong>INFINITE FRAMES</strong><small>SPATIAL ENGINE / 02</small></div></div>
+    <div class="top-right"><span class="dot"></span><span id="mode-label">SYNTHETIC WORLD</span></div>
+  </header>
+  <div class="edge edge-left">EXPLORE</div><div class="edge edge-right">CREATE</div>
+  <section class="intro" id="intro"><strong>One world. Infinite detail.</strong><span>Pinch to dive deeper. Tap a curve to reveal its relationships.</span></section>
+  <aside class="inspector" id="inspector" aria-live="polite" hidden>
+    <div class="inspect-header"><span>SELECTED REGION</span><button type="button" id="close-inspector" aria-label="Close selection">×</button></div>
+    <h2 id="region-name">Region</h2><p id="region-author"></p>
+    <div class="inspect-grid"><div><small>DEPTH</small><strong id="region-depth">0</strong></div><div><small>CHILDREN</small><strong id="region-children">0</strong></div><div><small>LINEAGE</small><strong id="region-lineage">0</strong></div></div>
+    <div id="breadcrumb" class="breadcrumb"></div>
+    <button type="button" id="focus-region" class="focus-button">Focus on this curve <span>↗</span></button>
+  </aside>
+  <div class="tools" role="group" aria-label="Canvas controls">
+    <button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-out" aria-label="Zoom out">−</button>
+    <div class="tool-split"></div><button id="reset-view" aria-label="Reset view">⌂</button>
+  </div>
+  <footer class="bottom">
+    <div class="metrics"><div><small>INDEXED</small><strong id="m-total">0</strong></div><div><small>IN VIEW</small><strong id="m-visible">0</strong></div><div><small>DRAWN</small><strong id="m-drawn">0</strong></div><div><small>DRAW MS</small><strong id="m-ms">0</strong></div></div>
+    <div class="bottom-bar"><div class="demo-select"><span>STRESS TEST</span><select id="sample-count" aria-label="Synthetic curve count"><option value="4000">4K</option><option value="14000" selected>14K</option><option value="40000">40K</option></select></div><button id="fit-view">FIT WORLD</button></div>
+    <p class="disclaimer">DEMO GEOMETRY · VIEWPORT QUERIES IN A WORKER · NO PRODUCTION WRITES</p>
+  </footer>
+  <div class="notice" id="notice" role="status"></div>
+</main>
+<script type="module" src="./src/main.js"></script>
+</body></html>
