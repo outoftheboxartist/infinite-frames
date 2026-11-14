@@ -174,20 +174,20 @@ function createBackend(){
   }
   return state;
  }
- async function sync(){
+ async function sync(replace=false){
   let cloud;
   try{cloud=await loadRemote()}catch(e){mark("Saved locally; cloud unavailable: "+e.message,false);return false}
-  if(cloud){state=merge(state,cloud.doc);rev=Math.max(rev,cloud.revision)+1;await localWrite({doc:state,revision:rev})}
+  if(cloud){if(!replace)state=merge(state,cloud.doc);rev=Math.max(rev,cloud.revision)+1;await localWrite({doc:state,revision:rev})}
   try{
    await request("POST",{id:world,doc:state,revision:rev,updated_at:new Date().toISOString()});
    mark("Saved to isolated Supabase test world",true);return true;
   }catch(e){mark("Saved locally; cloud unavailable: "+e.message,false);return false}
  }
- async function save(){
+ async function save(replace=false){
   rev++;await localWrite({doc:state,revision:rev});loaded=true;
   mark("Saved on this device",false);
   channel?.postMessage({type:"update"});
-  await sync();
+  await sync(replace);
  }
  function append(key,rows){state[key]=unique(state[key],rows,key==="votes"?v=>v.msgId+"|"+v.voterId:v=>v.id)}
  const backend={
@@ -207,7 +207,7 @@ function createBackend(){
    append("events",events);await save();
    notify({type:"frame",row:{n:n+1,status:"open"}});
   },
-  async reset(){state=empty();await save();return true},
+  async reset(){state=empty();await save(true);return true},
   async regionById(id){return state.boundaries.find(x=>x.id===id)||null},
   async searchRegions(query,{limit=40}={}){
    const q=String(query||"").toLowerCase();
