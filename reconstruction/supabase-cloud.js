@@ -17,8 +17,8 @@ class Cache{
     if(this.opening)return this.opening;
     this.opening=new Promise((resolve,reject)=>{
       if(!root.indexedDB){resolve(null);return}
-      const request=root.indexedDB.open("if-cloud-cache-v1",1);
-      request.onupgradeneeded=()=>{request.result.createObjectStore("bundles",{keyPath:"path"})};
+      const request=root.indexedDB.open("if-cloud-cache-v1",2);
+      request.onupgradeneeded=()=>{if(!request.result.objectStoreNames.contains("bundles"))request.result.createObjectStore("bundles",{keyPath:"path"});if(!request.result.objectStoreNames.contains("viewports"))request.result.createObjectStore("viewports",{keyPath:"key"})};
       request.onsuccess=()=>{this.db=request.result;resolve(this.db)};
       request.onerror=()=>{console.warn("Cloud bundle cache unavailable");resolve(null)};
     });return this.opening
@@ -38,6 +38,19 @@ class Cache{
     }catch(e){console.warn("Device storage full; skipping bundle cache",e)}
   }
 }
+Cache.prototype.getViewport=async function(key){
+  const db=await this.open();if(!db)return null;
+  return new Promise(resolve=>{const req=db.transaction("viewports").objectStore("viewports").get(key);req.onsuccess=()=>resolve(req.result?.rows||null);req.onerror=()=>resolve(null)})
+};
+Cache.prototype.putViewport=async function(key,rows){
+  const db=await this.open();if(!db)return;
+  try{
+    const t=db.transaction("viewports","readwrite"),store=t.objectStore("viewports");
+    store.put({key,rows,at:Date.now()});
+    const all=store.getAll();
+    all.onsuccess=()=>{const values=all.result||[];if(values.length>50)values.sort((a,b)=>a.at-b.at).slice(0,values.length-50).forEach(x=>store.delete(x.key))};
+  }catch(e){console.warn("Skipping cached viewport metadata",e)}
+};
 class Cloud{
   constructor(config){
     this.base=config.url.replace(/\/$/,"");
@@ -153,16 +166,25 @@ class Cloud{
     const minExtent=options.minExtent??pixelWorld*.28;
     const pageSize=Math.min(MAX_REMOTE_ROWS,Math.max(80,options.limit||260));
     const cap=Math.max(pageSize,Math.min(4800,options.maxRecords||(z>40?2600:z>5?1300:520)));
-    const rows=[];
-    for(let page=0;rows.length<cap;page++){
-      const batch=await this.request("/rest/v1/rpc/if_shared_viewport_page",{method:"POST",json:{
-        p_world:this.world,p_frames:frames,p_min_x:box.x,p_min_y:box.y,p_max_x:box.x+box.w,p_max_y:box.y+box.h,
-        p_min_extent:minExtent,p_offset:rows.length,p_limit:Math.min(pageSize,cap-rows.length)
-      },auth:false});
-      if(!Array.isArray(batch))throw Error("Cloud spatial index returned an invalid page");
-      rows.push(...batch);
-      if(batch.length<Math.min(pageSize,cap-(rows.length-batch.length)))break;
-      if(page>=25)break;
+    const key=[this.world,frames.join(","),box.x,box.y,box.w,box.h,minExtent,cap].map(String).join("|");
+    let rows=[];
+    try{
+      for(let page=0;rows.length<cap;page++){
+        const requested=Math.min(pageSize,cap-rows.length);
+        const batch=await this.request("/rest/v1/rpc/if_shared_viewport_page",{method:"POST",json:{
+          p_world:this.world,p_frames:frames,p_min_x:box.x,p_min_y:box.y,p_max_x:box.x+box.w,p_max_y:box.y+box.h,
+          p_min_extent:minExtent,p_offset:rows.length,p_limit:requested
+        },auth:false});
+        if(!Array.isArray(batch))throw Error("Cloud spatial index returned an invalid page");
+        rows.push(...batch);
+        if(batch.length<requested||page>=25)break;
+      }
+      this.cache.putViewport(key,rows);
+    }catch(err){
+      const cached=await this.cache.getViewport(key);
+      if(!cached)throw err;
+      rows=cached;
+      console.warn("Offline: using cached cloud spatial metadata",err.message);
     }
     if(rows.length===0)return{boundaries:[],items:[],count:0};
     rows.forEach(x=>this.remoteById.set(x.id,x));
@@ -357,7 +379,7 @@ function combine(base,cloud){
    subscribe(fn){listeners.add(fn);const sub=base.subscribe(fn);return()=>{listeners.delete(fn);sub()}},
    onPresence:base.onPresence,
    places:base.places,
-   async publish(payload){await cloud.publish(payload);previews.clear();try{await base.publish(payload)}catch(e){console.warn("Cloud saved successfully, but offline mirror is unavailable",e)}notify({type:"cloud-status",row:{online:true,authenticated:true}})},
+   async publish(payload){await cloud.publish(payload);previews.clear();backend._readyViewport=null;try{await base.publish(payload)}catch(e){console.warn("Cloud saved successfully, but offline mirror is unavailable",e)}notify({type:"cloud-status",row:{online:true,authenticated:true}})},
    async loadView(view,options){
      // Local geometry must never wait for a slow Supabase request.
      const frames=(options.frameNs||[options.frameN||1]).join(",");
@@ -444,7 +466,7 @@ function combine(base,cloud){
    if(root.document?.visibilityState==="hidden")return;
    try{
      const id=await cloud.latest();
-     if(id!==last){last=id;notify({type:"refresh",row:{}});await warm()}
+     if(id!==last){last=id;backend._readyViewport=null;previews.clear();notify({type:"refresh",row:{}});await warm()}
      else if(!connected)await warm();
    }catch(e){connected=false}
  };
