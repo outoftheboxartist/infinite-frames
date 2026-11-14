@@ -176,7 +176,14 @@ class Store{
     if(options.withGeometry===false)return relevant.map(m=>({id:m.id,bbox:m.bbox,name:m.name,color:m.color,frameN:m.frameN}));
     return Promise.all(relevant.map(m=>this.resolve(m.id)));
   }
-  async getOriginalSource(id){await this.open();const t=this.db.transaction(["sources"],"readonly");return (await request(t.objectStore("sources").get("i:"+id)))?.src||null}
+  async getOriginalSource(id){
+    await this.open();
+    this.sourceCache||(this.sourceCache=new Map);
+    if(this.sourceCache.has(id)){const value=this.sourceCache.get(id);this.sourceCache.delete(id);this.sourceCache.set(id,value);return value}
+    const tx=this.db.transaction(["sources"],"readonly"),src=(await request(tx.objectStore("sources").get("i:"+id)))?.src||null;
+    if(src){this.sourceCache.set(id,src);while(this.sourceCache.size>4)this.sourceCache.delete(this.sourceCache.keys().next().value)}
+    return src
+  }
   async count(){await this.open();const t=this.db.transaction(["records"],"readonly");return request(t.objectStore("records").count())}
 }
 root.IFSpatial={Store,split,join,boundsFromPath,entityBox,intersects};
