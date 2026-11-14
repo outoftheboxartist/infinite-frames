@@ -1321,6 +1321,16 @@ visibleCurves(rect){
  const found=new Map([...visible,...drafts].map(x=>[x.id,x]));
  const all=new Map([...source,...drafts].map(x=>[x.id,x]));
  if(state.selected&&all.has(state.selected))found.set(state.selected,all.get(state.selected));
+ // The source of a visible image/vector requires its parent and every ancestor clip.
+ // Without this, a culling optimization can accidentally expose unclipped artwork.
+ const frames=state.frames.slice(Math.max(0,state.viewing-(state.onion?state.ghosts:0)),state.viewing+1);
+ for(const frame of frames)for(const item of this.indexedVisible(frame.items||[],rect,pixel*.35)){
+  let parent=all.get(item.b),limit=0;
+  while(parent&&limit++<32){
+   found.set(parent.id,parent);
+   parent=parent.clipParent?all.get(parent.clipParent):null;
+  }
+ }
  for(const b of [...found.values()]){
   let current=b,limit=0;
   while(current?.clipParent&&limit++<32){
@@ -1439,7 +1449,7 @@ curveSearchBackend(){
    // When the remote world has no catalog, page actual local curves instead.
    if(!published?.items?.length){
     const start=after&&after.startsWith("local:")?all.findIndex(x=>x.key>after):0;
-    const offset=Math.max(0,start),limit=Math.max(1,Math.min(80,options.limit||48));
+    const offset=after&&after.startsWith("local:")?(start<0?all.length:start):0,limit=Math.max(1,Math.min(80,options.limit||48));
     const items=all.slice(offset,offset+limit);
     return{items,hasMore:offset+limit<all.length,nextCursor:items.length?items[items.length-1].key:null};
    }
