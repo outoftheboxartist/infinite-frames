@@ -36,6 +36,8 @@ export class CanvasRenderer {
       if(!node)continue;
       const art=node.artwork;
       const type=art?.type;
+      // Never render unclipped artwork when its required parent was not retrieved.
+      if(node.parentId&&!this.scene.byId.has(node.parentId))continue;
       if(node.kind==="boundary"&&!node.path)continue;
       ctx.save();
       // Paint geometry in the actual world coordinate system, inside ancestor boundaries.
