@@ -8,7 +8,7 @@ root.IFSpatial.createBackend=function(config){
   const listeners=new Set(),presences=new Set(),peers=new Map();
   const id=Math.random().toString(36).slice(2);
   const channel=typeof root.BroadcastChannel==="function"?new root.BroadcastChannel("if-spatial-channel-v1"):null;
-  let fallback=null,initializing=null,snapshot=null,spatial=null;
+  let fallback=null,initializing=null,snapshot=null,spatial=null,previewJobs=new Map();
   const latest=()=>snapshot||{boundaries:[],items:[],frames:[{n:1,status:"open"}],messages:[],votes:[],events:[]};
   const notify=event=>listeners.forEach(fn=>{try{fn(event)}catch(e){console.warn("Spatial listener failed",e)}});
   const applyEvent=(event)=>{
@@ -42,11 +42,22 @@ root.IFSpatial.createBackend=function(config){
       try{
         spatial=new (config.Store||root.IFSpatial.Store)();
         await spatial.open();
-        snapshot=await spatial.loadCompatible();
+        let legacy=null;
+        snapshot=await spatial.loadShell();
         if(!snapshot){
-          const legacy=await config.legacyLoad();
+          legacy=await config.legacyLoad();
           await spatial.importLegacy(legacy);
-          snapshot=await spatial.loadCompatible();
+          snapshot=await spatial.loadShell();
+        }
+        // Preview creation runs *after* lightweight metadata bootstrap, not on the critical path.
+        if(legacy&&typeof spatial.makeFramePreview==="function"){
+          const previous=legacy;
+          Promise.resolve().then(async()=>{
+            for(const frame of previous.frames||[]){
+              try{const url=await spatial.makeFramePreview(frame.n,previous);
+                if(url)notify({type:"preview",row:{frameN:frame.n,url}})}catch(err){console.warn("Frame preview unavailable",err)}
+            }
+          });
         }
         if(!snapshot)throw Error("Spatial migration did not produce a readable snapshot");
         return snapshot;
@@ -71,6 +82,10 @@ root.IFSpatial.createBackend=function(config){
     const next={...current,boundaries,items,events};
     await spatial.putPublication(payload,{frames:next.frames,messages:next.messages,votes:next.votes,events:next.events});
     snapshot=next;
+    if(spatial&&typeof spatial.invalidateFramePreview==="function"){
+      const frames=[...new Set([...(payload.items||[]),...(payload.boundaries||[])].map(x=>x.frameN||1))];
+      for(const frame of frames)spatial.invalidateFramePreview(frame).catch(console.warn);
+    }
     for(const b of payload.boundaries||[])publishEvent({type:"boundary",row:b});
     for(const i of payload.items||[])publishEvent({type:"item",row:i});
     for(const e of payload.events||[])publishEvent({type:"event",row:e});
@@ -124,6 +139,20 @@ root.IFSpatial.createBackend=function(config){
       await init();
       if(spatial)return spatial.palette({limit:64});
       return [...new Set(latest().boundaries.map(b=>String(b.color||"").toLowerCase()).filter(c=>/^#[a-f0-9]{6}$/.test(c)))].sort().slice(0,64)
+    },
+    async loadView(view,options={}){
+      await init();
+      if(spatial&&spatial.loadViewport)return spatial.loadViewport(view,options);
+      return {boundaries:latest().boundaries,items:latest().items,count:latest().items.length+latest().boundaries.length};
+    },
+    async framePreview(frameN){
+      await init();if(!spatial||!spatial.getFramePreview)return null;
+      const old=await spatial.getFramePreview(frameN);if(old)return old;
+      if(!previewJobs.has(frameN)){
+        const job=spatial.makeFramePreview(frameN).then(url=>{if(url)notify({type:"preview",row:{frameN,url}});return url}).catch(err=>{console.warn("Could not make frame preview",err);return null}).finally(()=>previewJobs.delete(frameN));
+        previewJobs.set(frameN,job);
+      }
+      return previewJobs.get(frameN);
     },
     async regionById(id){await init();return spatial?spatial.resolve(id):latest().boundaries.find(b=>b.id===id)},
     async visibleRegions(rect,options){await init();return spatial?spatial.viewport(rect,options):latest().boundaries.filter(b=>root.IFSpatial.intersects(root.IFSpatial.boundsFromPath(b.d),rect)).slice(0,120)},
