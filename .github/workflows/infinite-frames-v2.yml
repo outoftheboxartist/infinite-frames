@@ -1,0 +1,25 @@
+name: Infinite Frames V2 spatial tests
+on:
+  push:
+    branches:
+      - engine/v2-spatial-foundation
+    paths:
+      - engine-v2/**
+      - .github/workflows/infinite-frames-v2.yml
+  pull_request:
+    paths:
+      - engine-v2/**
+      - .github/workflows/infinite-frames-v2.yml
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Runtime
+        run: node --version
+      - name: Spatial and lineage tests
+        run: node --test engine-v2/tests/*.test.mjs
