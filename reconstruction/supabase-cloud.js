@@ -4,7 +4,7 @@
    Local IndexedDB is preserved as an offline/rollback mirror. */
 (function(root){
 "use strict";
-const MAX_REMOTE_ROWS=320,MAX_BUNDLE_BYTES=1500000,WORLD="root";
+const MAX_REMOTE_ROWS=320,MAX_BUNDLE_BYTES=1500000,MAX_SINGLE_BYTES=45000000,WORLD="root";
 const compact=x=>String(x==null?"":x).trim();
 const randomId=()=>root.crypto&&root.crypto.randomUUID?root.crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2);
 const enc=x=>encodeURIComponent(String(x));
@@ -236,7 +236,7 @@ class Cloud{
     const groups=[];let group=[],bytes=0;
     for(const item of entries){
       const length=JSON.stringify(item).length+6;
-      if(length>MAX_BUNDLE_BYTES)throw Error("One SVG record exceeds 1.5 MB. Chunk this submission into smaller shapes; no geometry was reduced.");
+      if(length>MAX_SINGLE_BYTES)throw Error("A single SVG exceeds this storage provider’s per-file limit; it was not compressed or altered.");
       if((bytes+length>MAX_BUNDLE_BYTES||group.length>=120)&&group.length){groups.push(group);group=[];bytes=0}
       group.push(item);bytes+=length;
     }
@@ -286,7 +286,7 @@ class Cloud{
     await this.request("/rest/v1/if_shared_frames?on_conflict=world_id%2Cframe_n",{method:"POST",json:{world_id:this.world,frame_n:n+1,status:"open",created_by:uid},headers:{Prefer:"resolution=ignore-duplicates,return=minimal"}});
   }
   async latest(){
-    const q=new URLSearchParams({select:"id,published_at",world_id:"eq."+this.world,order:"published_at.desc",limit:"1"});
+    const q=new URLSearchParams({select:"id,published_at",world_id:"eq."+this.world,order:"published_at.desc,id.desc",limit:"1"});
     const rows=await this.request("/rest/v1/if_shared_nodes?"+q.toString(),{auth:false});
     return rows?.[0]?.id||""
   }
@@ -314,7 +314,7 @@ function combine(base,cloud){
    subscribe(fn){listeners.add(fn);const sub=base.subscribe(fn);return()=>{listeners.delete(fn);sub()}},
    onPresence:base.onPresence,
    places:base.places,
-   async publish(payload){await cloud.publish(payload);await base.publish(payload);notify({type:"cloud-status",row:{online:true,authenticated:true}})},
+   async publish(payload){await cloud.publish(payload);try{await base.publish(payload)}catch(e){console.warn("Cloud saved successfully, but offline mirror is unavailable",e)}notify({type:"cloud-status",row:{online:true,authenticated:true}})},
    async loadView(view,options){
      const [local,remote]=await Promise.allSettled([base.loadView(view,options),cloud.viewport(view,options)]);
      if(local.status==="rejected"&&remote.status==="rejected")throw Error("Both local and shared spatial loading failed");
@@ -363,9 +363,8 @@ function combine(base,cloud){
    if(root.document?.visibilityState==="hidden")return;
    try{
      const id=await cloud.latest();
-     if(last&&id!==last){notify({type:"refresh",row:{}});await warm()}
+     if(id!==last){last=id;notify({type:"refresh",row:{}});await warm()}
      else if(!connected)await warm();
-     last=id;
    }catch(e){connected=false}
  };
  if(typeof root.setInterval==="function")poller=root.setInterval(poll,14000);
@@ -381,7 +380,7 @@ function openAccount(backend){
  const status=document.createElement("p");status.style.cssText="margin:0;color:#a5bed0;line-height:1.5";
  const input=(type,placeholder)=>{const x=document.createElement("input");x.type=type;x.placeholder=placeholder;x.style.cssText="height:44px;background:#060d13;color:#fff;border:1px solid #516779;border-radius:10px;padding:10px;font:13px system-ui;width:100%";return x};
  const email=input("email","Email address"),password=input("password","Password (at least 6 characters)"),code=input("text","Email verification code (if provided)");
- const button=(label,fn)=>{const b=document.createElement("button");b.textContent=label;b.style.cssText="min-height:43px;border:1px solid #52768b;border-radius:10px;background:#163043;color:#e1f9ff;font:700 12px system-ui;cursor:pointer";b.onclick=async()=>{b.disabled=true;status.textContent="Contacting Supabase…";try{await fn();render()}catch(e){status.textContent=e.message}finally{b.disabled=false}};return b};
+ const button=(label,fn)=>{const b=document.createElement("button");b.textContent=label;b.style.cssText="min-height:43px;border:1px solid #52768b;border-radius:10px;background:#163043;color:#e1f9ff;font:700 12px system-ui;cursor:pointer";b.onclick=async()=>{b.disabled=true;status.textContent="Contacting Supabase…";try{await fn();if(backend.signedIn||status.textContent==="Contacting Supabase…")render()}catch(e){status.textContent=e.message}finally{b.disabled=false}};return b};
  const signin=button("Sign in",()=>backend.signIn(email.value.trim(),password.value));
  const signup=button("Create account",async()=>{const result=await backend.signUp(email.value.trim(),password.value);status.textContent=result.access_token?"Signed in":"Check your inbox to confirm your email, then sign in."});
  const otp=button("Email a sign-in link / code",async()=>{await backend.sendOtp(email.value.trim());status.textContent="Check your email. If a code is included, enter it here."});
