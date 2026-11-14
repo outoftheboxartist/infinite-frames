@@ -2,7 +2,7 @@ import { SpatialIndex, lineage, relatedTo } from "./spatial.js";
 export class Scene {
   constructor() {
     this.nodes = []; this.byId = new Map(); this.children = new Map();
-    this.pathCache = new Map(); this.imageCache = new Map(); this.worker = null; this.index = null; this.onAsset = null;
+    this.pathCache = new Map(); this.imageCache = new Map(); this.relations = null; this.worker = null; this.index = null; this.onAsset = null;
     this.pending = new Map(); this.nextRequest = 0; this.version = 0;
     this.workerMode = false; this.ready = false;
   }
@@ -20,7 +20,7 @@ export class Scene {
       const siblings = this.children.get(node.parentId) || [];
       siblings.push(node.id); this.children.set(node.parentId, siblings);
     }
-    this.pathCache.clear();this.imageCache.clear();
+    this.pathCache.clear();this.imageCache.clear();this.relations=null;
     const metadata = nodes.map(n => ({ id: n.id, parentId: n.parentId, depth: n.depth, order: n.order, bbox: n.bbox }));
     try {
       if (typeof Worker === "undefined") throw Error("Worker unavailable");
@@ -97,7 +97,23 @@ export class Scene {
   }
   imageStatus(id) {return this.imageCache.get(id)?.error?"unavailable":this.imageCache.get(id)?.loaded?"ready":"loading"}
   lineage(id) { return lineage(this.byId,id); }
-  related(id, selected) { return relatedTo(this.byId,id,selected); }
+  related(id, selected) {
+    if(!selected)return true;
+    if(!this.relations||this.relations.selected!==selected) {
+      const related=new Set(lineage(this.byId,selected));
+      const node=this.byId.get(selected);
+      if(node?.parentId)for(const sibling of this.children.get(node.parentId)||[])related.add(sibling);
+      const pending=[selected];
+      while(pending.length) {
+        const next=pending.pop();
+        if(related.has(next)&&next!==selected)continue;
+        related.add(next);
+        for(const child of this.children.get(next)||[])if(!related.has(child))pending.push(child);
+      }
+      this.relations={selected,set:related};
+    }
+    return this.relations.set.has(id);
+  }
   childCount(id) { return (this.children.get(id)||[]).filter(id=>this.byId.get(id)?.kind==='boundary').length; }
   destroy() { this.worker?.terminate(); this.worker=null; this.pending.clear(); }
 }
