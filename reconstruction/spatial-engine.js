@@ -4,7 +4,7 @@
    and the Supabase adapter are separate rollouts. */
 (function(root){
 "use strict";
-const NAME="infinite-frames-spatial-v1", VERSION=2, LIMIT=200;
+const NAME="infinite-frames-spatial-v1", VERSION=3, LIMIT=96;
 const request=r=>new Promise((resolve,reject)=>{r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error||new Error("IndexedDB request failed"))});
 const completed=t=>new Promise((resolve,reject)=>{t.oncomplete=()=>resolve();t.onerror=()=>reject(t.error||new Error("IndexedDB transaction failed"));t.onabort=()=>reject(t.error||new Error("IndexedDB transaction aborted"))});
 const tidy=x=>String(x==null?"":x).toLocaleLowerCase().trim();
@@ -60,6 +60,17 @@ class Store{
         if(!records.indexNames.contains("by_color_key"))records.createIndex("by_color_key",["colorLower","key"]);
         if(!db.objectStoreNames.contains("geometry"))db.createObjectStore("geometry",{keyPath:"key"});
         if(!db.objectStoreNames.contains("state"))db.createObjectStore("state",{keyPath:"key"});
+        if(!db.objectStoreNames.contains("previews"))db.createObjectStore("previews",{keyPath:"key"});
+        if(!db.objectStoreNames.contains("tiles")){
+          const tiles=db.createObjectStore("tiles",{keyPath:"id"});tiles.createIndex("by_tile","tileKey");
+          if(db.objectStoreNames.contains("records")){
+            const scan=r.transaction.objectStore("records").openCursor();
+            scan.onsuccess=()=>{const cursor=scan.result;if(!cursor)return;
+              const entries=root.IFSpatial&&root.IFSpatial.tileEntries;
+              if(entries)for(const tile of entries(cursor.value))tiles.put(tile);
+              cursor.continue()};
+          }
+        }
       };
       r.onerror=()=>reject(r.error||new Error("Could not open spatial database"));
       r.onsuccess=()=>{this.db=r.result;this.db.onversionchange=()=>this.db.close();resolve(this)};
@@ -68,9 +79,9 @@ class Store{
   async state(){await this.open();const t=this.db.transaction(["state"],"readonly");return(await request(t.objectStore("state").get("world")))?.value||null}
   async importLegacy(snapshot){
     await this.open();if(await this.state())return false;
-    const t=this.db.transaction(["records","geometry","state"],"readwrite");const rec=t.objectStore("records"),geom=t.objectStore("geometry");
-    for(const e of snapshot.boundaries||[]){const {meta,geom:g}=split(e,"boundary");rec.put(meta);geom.put(g)}
-    for(const e of snapshot.items||[]){const {meta,geom:g}=split(e,"item");rec.put(meta);geom.put(g)}
+    const t=this.db.transaction(["records","geometry","state","tiles"],"readwrite");const rec=t.objectStore("records"),geom=t.objectStore("geometry"),tiles=t.objectStore("tiles");
+    for(const e of snapshot.boundaries||[]){const {meta,geom:g}=split(e,"boundary");rec.put(meta);geom.put(g);for(const tile of root.IFSpatial.tileEntries(meta))tiles.put(tile)}
+    for(const e of snapshot.items||[]){const {meta,geom:g}=split(e,"item");rec.put(meta);geom.put(g);for(const tile of root.IFSpatial.tileEntries(meta))tiles.put(tile)}
     const state={frames:snapshot.frames||[{n:1,status:"open"}],messages:snapshot.messages||[],votes:snapshot.votes||[],events:snapshot.events||[]};
     t.objectStore("state").put({key:"world",value:state,revision:1});await completed(t);this.meta=state;return true
   }
@@ -86,9 +97,9 @@ class Store{
   async putPublication({boundaries=[],items=[],events=[]},snapshot){
     await this.open();
     const next={...this.meta,...snapshot,events:snapshot.events||[...(this.meta?.events||[]),...events]};
-    const t=this.db.transaction(["records","geometry","state"],"readwrite"),r=t.objectStore("records"),g=t.objectStore("geometry");
-    for(const e of boundaries){const x=split(e,"boundary");r.put(x.meta);g.put(x.geom)}
-    for(const e of items){const x=split(e,"item");r.put(x.meta);g.put(x.geom)}
+    const t=this.db.transaction(["records","geometry","state","tiles"],"readwrite"),r=t.objectStore("records"),g=t.objectStore("geometry"),tiles=t.objectStore("tiles");
+    for(const e of boundaries){const x=split(e,"boundary");r.put(x.meta);g.put(x.geom);for(const tile of root.IFSpatial.tileEntries(x.meta))tiles.put(tile)}
+    for(const e of items){const x=split(e,"item");r.put(x.meta);g.put(x.geom);for(const tile of root.IFSpatial.tileEntries(x.meta))tiles.put(tile)}
     t.objectStore("state").put({key:"world",value:next,revision:1});await completed(t);this.meta=next;
     return true
   }
