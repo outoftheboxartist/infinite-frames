@@ -181,6 +181,37 @@ class Cloud{
     }
     return{boundaries,items,count:rows.length};
   }
+  async frameSnapshot(frameN,localURL){
+    if(!root.document||!root.Path2D||!root.Image)return localURL||null;
+    // 3D overview is a derived texture; the original SVG remains in private
+    // immutable bundles. Only visually relevant, bounded geometry is requested.
+    const canvas=root.document.createElement("canvas");canvas.width=600;canvas.height=600;
+    const ctx=canvas.getContext("2d");if(!ctx)return localURL||null;
+    ctx.scale(.6,.6);
+    const loadImg=url=>new Promise((resolve,reject)=>{const img=new root.Image();img.onload=()=>resolve(img);img.onerror=reject;img.src=url});
+    if(localURL)try{const img=await loadImg(localURL);ctx.drawImage(img,0,0,1000,1000)}catch(e){}
+    const frames=Array.from({length:Math.min(frameN,60)},(_,i)=>i+1);
+    const data=await this.viewport({x:500,y:500,z:1},{frameNs:frames,padding:0,limit:260,maxRecords:550,minExtent:1.3});
+    const boundaries=new Map(data.boundaries.map(b=>[b.id,b]));
+    const clip=boundary=>{
+      let b=boundary,steps=0;
+      while(b&&steps++<12){try{ctx.clip(new root.Path2D(b.d),"evenodd")}catch(e){}b=b.clipParent?boundaries.get(b.clipParent):null}
+    };
+    let i=0;
+    for(const item of data.items){
+      if(item.frameN!==frameN)continue;
+      ctx.save();const parent=boundaries.get(item.b);if(parent)clip(parent);
+      const t=item.t;
+      if(t){const cx=item.cx||0,cy=item.cy||0;ctx.translate(cx+(t.x||0),cy+(t.y||0));ctx.rotate((t.r||0)*Math.PI/180);ctx.scale(t.s||1,t.s||1);ctx.translate(-cx,-cy)}
+      try{
+        if(item.type==="vector")for(const p of item.paths||[]){ctx.fillStyle=p.color||"#ffffff";ctx.fill(new root.Path2D(p.d),"evenodd")}
+        else if(item.type==="stroke"){ctx.strokeStyle=item.color||"#ffffff";ctx.lineWidth=item.w||1;ctx.stroke(new root.Path2D(item.d))}
+      }catch(e){}
+      ctx.restore();
+      if(++i%25===0)await delay(0);
+    }
+    return canvas.toDataURL("image/webp",.83);
+  }
   async search(term,limit=40){
     if(!compact(term))return[];
     const rows=await this.request("/rest/v1/rpc/if_shared_search",{method:"POST",json:{p_world:this.world,p_query:compact(term),p_limit:Math.min(80,limit)},auth:false});
@@ -304,7 +335,7 @@ class Cloud{
   }
 }
 function combine(base,cloud){
- const listeners=new Set();let connected=false,unsubscribe=null,poller=null,last="",authState=null;
+ const listeners=new Set();let connected=false,unsubscribe=null,poller=null,last="",authState=null;const previews=new Map(),previewJobs=new Map();
  const notify=e=>listeners.forEach(fn=>{try{fn(e)}catch(err){console.warn(err)}});
  async function warm(){
    try{
@@ -312,7 +343,7 @@ function combine(base,cloud){
      for(const f of frames)notify({type:"frame",row:f});
      for(const m of messages)notify({type:"message",row:m});
      for(const v of votes)notify({type:"vote",row:v});
-     last=await cloud.latest();
+     last=await cloud.latest();cloud.cloudLatest=last;previews.clear();
      connected=true;notify({type:"cloud-status",row:{online:true,authenticated:!!cloud.session?.access_token}});
    }catch(e){connected=false;notify({type:"cloud-status",row:{online:false,error:e.message}});console.warn("Shared canvas will retry",e)}
  }
@@ -326,7 +357,7 @@ function combine(base,cloud){
    subscribe(fn){listeners.add(fn);const sub=base.subscribe(fn);return()=>{listeners.delete(fn);sub()}},
    onPresence:base.onPresence,
    places:base.places,
-   async publish(payload){await cloud.publish(payload);try{await base.publish(payload)}catch(e){console.warn("Cloud saved successfully, but offline mirror is unavailable",e)}notify({type:"cloud-status",row:{online:true,authenticated:true}})},
+   async publish(payload){await cloud.publish(payload);previews.clear();try{await base.publish(payload)}catch(e){console.warn("Cloud saved successfully, but offline mirror is unavailable",e)}notify({type:"cloud-status",row:{online:true,authenticated:true}})},
    async loadView(view,options){
      const [local,remote]=await Promise.allSettled([base.loadView(view,options),cloud.viewport(view,options)]);
      if(local.status==="rejected"&&remote.status==="rejected")throw Error("Both local and shared spatial loading failed");
@@ -355,7 +386,18 @@ function combine(base,cloud){
      const [a,b]=await Promise.allSettled([base.availableColors(),cloud.palette()]);
      return [...new Set([...(a.status==="fulfilled"?a.value:[]),...(b.status==="fulfilled"?b.value:[])])].slice(0,75)
    },
-   async framePreview(frameN){return base.framePreview(frameN)},
+   async framePreview(frameN){
+     const key=frameN+":"+(cloud.cloudLatest||"empty");
+     if(previews.has(key))return previews.get(key);
+     if(previewJobs.has(key))return previewJobs.get(key);
+     const job=(async()=>{
+       const localURL=await base.framePreview(frameN).catch(()=>null);
+       const rendered=await cloud.frameSnapshot(frameN,localURL).catch(err=>{console.warn("Shared preview deferred",err);return localURL});
+       if(rendered){previews.set(key,rendered);while(previews.size>12)previews.delete(previews.keys().next().value)}
+       return rendered;
+     })().finally(()=>previewJobs.delete(key));
+     previewJobs.set(key,job);return job
+   },
    async visibleRegions(rect,options){return base.visibleRegions(rect,options)},
    async regionCount(){return base.regionCount()},
    async currentSnapshot(){return base.currentSnapshot()},
