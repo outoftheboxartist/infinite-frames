@@ -86,24 +86,33 @@ Store.prototype.invalidateFramePreview=async function(frameN){
 Store.prototype.makeFramePreview=async function(frameN,snapshot){
   await this.open();
   if(typeof document==="undefined"||typeof Path2D==="undefined")return null;
-  const data=snapshot||await this.loadCompatible();
-  if(!data)return null;
+  const indexed=!snapshot,records=indexed?await this._all("records"):null;
+  const boundaries=indexed?records.filter(x=>x.recordType==="boundary"):snapshot.boundaries||[];
+  const items=indexed?records.filter(x=>x.recordType==="item"&&x.frameN===frameN):(snapshot.items||[]).filter(x=>x.frameN===frameN);
+  const bMap=new Map(boundaries.map(x=>[x.id,x]));
   const canvas=document.createElement("canvas");canvas.width=640;canvas.height=640;
-  const ctx=canvas.getContext("2d");if(!ctx)return null;
-  ctx.scale(.64,.64);
-  const boundaryById=new Map((data.boundaries||[]).map(x=>[x.id,x]));
-  const queue=(data.items||[]).filter(x=>x.frameN===frameN);
-  ctx.save();
-  for(const b of data.boundaries||[]){
-    try{ctx.fillStyle="rgba(5,6,9,.66)";if(frameN===1)ctx.fill(new Path2D(b.d),"evenodd");
-      ctx.strokeStyle=b.color||"#aaa";ctx.globalAlpha=.3;ctx.lineWidth=1.3;ctx.stroke(new Path2D(b.d))}catch(e){}
-  }
-  ctx.restore();
-  const loadImg=url=>new Promise((resolve,reject)=>{const img=new Image;img.onload=()=>resolve(img);img.onerror=reject;img.src=url});
-  for(const x of queue){
+  const ctx=canvas.getContext("2d");if(!ctx)return null;ctx.scale(.64,.64);
+  const load=async(x,kind)=>indexed?this.resolve(x.id,kind):x;
+  let count=0;
+  const yieldUI=async()=>{if(++count%40===0)await new Promise(resolve=>setTimeout(resolve,0))};
+  for(const metadata of boundaries){
+    // Outlines smaller than one preview pixel have no visual contribution at this LOD.
+    const box=metadata.bbox||S.entityBox(metadata);
+    if(Math.max(box.w,box.h)<.7)continue;
+    const b=await load(metadata,"boundary");if(!b||!b.d)continue;
     ctx.save();
-    const b=boundaryById.get(x.b);
-    if(b){try{ctx.clip(new Path2D(b.d),"evenodd")}catch(e){}}
+    try{
+      if(frameN===1){ctx.fillStyle="rgba(5,6,9,.66)";ctx.fill(new Path2D(b.d),"evenodd")}
+      ctx.strokeStyle=b.color||"#aaa";ctx.globalAlpha=.3;ctx.lineWidth=1.3;ctx.stroke(new Path2D(b.d))
+    }catch(err){}
+    ctx.restore();await yieldUI();
+  }
+  const image=url=>new Promise((resolve,reject)=>{const img=new Image;img.onload=()=>resolve(img);img.onerror=reject;img.src=url});
+  for(const meta of items){
+    const x=await load(meta,"item");if(!x)continue;
+    ctx.save();
+    const b=bMap.get(x.b);
+    if(b){const clipped=await load(b,"boundary");if(clipped?.d)try{ctx.clip(new Path2D(clipped.d),"evenodd")}catch(err){}}
     const tr=x.t;
     if(tr){
       ctx.translate((tr.x||0)+(x.cx||0),(tr.y||0)+(x.cy||0));
@@ -113,12 +122,14 @@ Store.prototype.makeFramePreview=async function(frameN,snapshot){
     try{
       if(x.type==="vector")for(const p of x.paths||[]){ctx.fillStyle=p.color||"#fff";ctx.fill(new Path2D(p.d),"evenodd")}
       else if(x.type==="stroke"){ctx.strokeStyle=x.color||"#fff";ctx.lineWidth=x.w||1;ctx.lineJoin="round";ctx.lineCap="round";ctx.stroke(new Path2D(x.d))}
-      else if(x.src){const img=await loadImg(x.src);ctx.drawImage(img,x.x||0,x.y||0,x.w||100,x.h||100)}
-    }catch(e){}
-    ctx.restore();
+      else if(x.src){const img=await image(x.src);ctx.drawImage(img,x.x||0,x.y||0,x.w||100,x.h||100)}
+    }catch(err){}
+    ctx.restore();await yieldUI();
   }
+  // This small preview is not a replacement for any stored path or source photo.
   const url=canvas.toDataURL("image/webp",.82);
-  const t=this.db.transaction(["previews"],"readwrite");t.objectStore("previews").put({key:"frame:"+frameN,url,at:Date.now()});await complete(t);
+  const t=this.db.transaction(["previews"],"readwrite");
+  t.objectStore("previews").put({key:"frame:"+frameN,url,at:Date.now()});await complete(t);
   return url;
 };
 S.tileEntries=tileEntries;S.tileKeys=tileKeys;S.viewportRect=viewport;
