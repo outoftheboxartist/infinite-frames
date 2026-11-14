@@ -4,7 +4,7 @@
    and the Supabase adapter are separate rollouts. */
 (function(root){
 "use strict";
-const NAME="infinite-frames-spatial-v1", VERSION=3, LIMIT=96;
+const NAME="infinite-frames-spatial-v1", VERSION=4, LIMIT=96;
 const request=r=>new Promise((resolve,reject)=>{r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error||new Error("IndexedDB request failed"))});
 const completed=t=>new Promise((resolve,reject)=>{t.oncomplete=()=>resolve();t.onerror=()=>reject(t.error||new Error("IndexedDB transaction failed"));t.onabort=()=>reject(t.error||new Error("IndexedDB transaction aborted"))});
 const tidy=x=>String(x==null?"":x).toLocaleLowerCase().trim();
@@ -41,7 +41,8 @@ function split(e,type){
   // Never store the original raster inside metadata for traced vectors.
   if(e.orig){geom.orig=e.orig;delete meta.orig}
   if(e.regions){geom.regions=e.regions;delete meta.regions}
-  return{meta,geom};
+  const original=typeof e.originalImage==="string"?{key,src:e.originalImage}:null;delete meta.originalImage;
+  return{meta,geom,original};
 }
 function join(meta,geom){if(!meta)return null;const{key,recordType,nameLower,authorLower,colorLower,...rest}=meta;return{...rest,...(geom||{}) ,key:undefined}}
 class Store{
@@ -61,6 +62,7 @@ class Store{
         if(!db.objectStoreNames.contains("geometry"))db.createObjectStore("geometry",{keyPath:"key"});
         if(!db.objectStoreNames.contains("state"))db.createObjectStore("state",{keyPath:"key"});
         if(!db.objectStoreNames.contains("previews"))db.createObjectStore("previews",{keyPath:"key"});
+        if(!db.objectStoreNames.contains("sources"))db.createObjectStore("sources",{keyPath:"key"});
         if(!db.objectStoreNames.contains("tiles")){
           const tiles=db.createObjectStore("tiles",{keyPath:"id"});tiles.createIndex("by_tile","tileKey");
           if(db.objectStoreNames.contains("records")){
@@ -79,9 +81,9 @@ class Store{
   async state(){await this.open();const t=this.db.transaction(["state"],"readonly");return(await request(t.objectStore("state").get("world")))?.value||null}
   async importLegacy(snapshot){
     await this.open();if(await this.state())return false;
-    const t=this.db.transaction(["records","geometry","state","tiles"],"readwrite");const rec=t.objectStore("records"),geom=t.objectStore("geometry"),tiles=t.objectStore("tiles");
+    const t=this.db.transaction(["records","geometry","state","tiles","sources"],"readwrite");const rec=t.objectStore("records"),geom=t.objectStore("geometry"),tiles=t.objectStore("tiles"),sources=t.objectStore("sources");
     for(const e of snapshot.boundaries||[]){const {meta,geom:g}=split(e,"boundary");rec.put(meta);geom.put(g);for(const tile of root.IFSpatial.tileEntries(meta))tiles.put(tile)}
-    for(const e of snapshot.items||[]){const {meta,geom:g}=split(e,"item");rec.put(meta);geom.put(g);for(const tile of root.IFSpatial.tileEntries(meta))tiles.put(tile)}
+    for(const e of snapshot.items||[]){const {meta,geom:g,original}=split(e,"item");rec.put(meta);geom.put(g);if(original)sources.put(original);for(const tile of root.IFSpatial.tileEntries(meta))tiles.put(tile)}
     const state={frames:snapshot.frames||[{n:1,status:"open"}],messages:snapshot.messages||[],votes:snapshot.votes||[],events:snapshot.events||[]};
     t.objectStore("state").put({key:"world",value:state,revision:1});await completed(t);this.meta=state;return true
   }
@@ -97,9 +99,9 @@ class Store{
   async putPublication({boundaries=[],items=[],events=[]},snapshot){
     await this.open();
     const next={...this.meta,...snapshot,events:snapshot.events||[...(this.meta?.events||[]),...events]};
-    const t=this.db.transaction(["records","geometry","state","tiles"],"readwrite"),r=t.objectStore("records"),g=t.objectStore("geometry"),tiles=t.objectStore("tiles");
+    const t=this.db.transaction(["records","geometry","state","tiles","sources"],"readwrite"),r=t.objectStore("records"),g=t.objectStore("geometry"),tiles=t.objectStore("tiles"),sources=t.objectStore("sources");
     for(const e of boundaries){const x=split(e,"boundary");r.put(x.meta);g.put(x.geom);for(const tile of root.IFSpatial.tileEntries(x.meta))tiles.put(tile)}
-    for(const e of items){const x=split(e,"item");r.put(x.meta);g.put(x.geom);for(const tile of root.IFSpatial.tileEntries(x.meta))tiles.put(tile)}
+    for(const e of items){const x=split(e,"item");r.put(x.meta);g.put(x.geom);if(x.original)sources.put(x.original);for(const tile of root.IFSpatial.tileEntries(x.meta))tiles.put(tile)}
     t.objectStore("state").put({key:"world",value:next,revision:1});await completed(t);this.meta=next;
     return true
   }
@@ -174,6 +176,7 @@ class Store{
     if(options.withGeometry===false)return relevant.map(m=>({id:m.id,bbox:m.bbox,name:m.name,color:m.color,frameN:m.frameN}));
     return Promise.all(relevant.map(m=>this.resolve(m.id)));
   }
+  async getOriginalSource(id){await this.open();const t=this.db.transaction(["sources"],"readonly");return (await request(t.objectStore("sources").get("i:"+id)))?.src||null}
   async count(){await this.open();const t=this.db.transaction(["records"],"readonly");return request(t.objectStore("records").count())}
 }
 root.IFSpatial={Store,split,join,boundsFromPath,entityBox,intersects};
