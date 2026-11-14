@@ -107,6 +107,14 @@ Store.prototype.makeFramePreview=async function(frameN,snapshot){
   const canvas=document.createElement("canvas");canvas.width=640;canvas.height=640;
   const ctx=canvas.getContext("2d");if(!ctx)return null;ctx.scale(.64,.64);
   const load=async(x,kind)=>indexed?this.resolve(x.id,kind):x;
+  const clippedAncestors=async boundary=>{
+    let current=boundary,steps=0;
+    while(current&&steps++<10){
+      const region=await load(current,"boundary");
+      if(region?.d)try{ctx.clip(new Path2D(region.d),"evenodd")}catch(e){}
+      current=region?.clipParent?bMap.get(region.clipParent):null;
+    }
+  };
   let count=0;
   const yieldUI=async()=>{if(++count%40===0)await new Promise(resolve=>setTimeout(resolve,0))};
   for(const metadata of boundaries){
@@ -114,7 +122,7 @@ Store.prototype.makeFramePreview=async function(frameN,snapshot){
     const box=metadata.bbox||S.entityBox(metadata);
     if(Math.max(box.w,box.h)<.7)continue;
     const b=await load(metadata,"boundary");if(!b||!b.d)continue;
-    ctx.save();
+    ctx.save();if(b.clipParent&&bMap.has(b.clipParent))await clippedAncestors(bMap.get(b.clipParent));
     try{
       if(frameN===1){ctx.fillStyle="rgba(5,6,9,.66)";ctx.fill(new Path2D(b.d),"evenodd")}
       ctx.strokeStyle=b.color||"#aaa";ctx.globalAlpha=.3;ctx.lineWidth=1.3;ctx.stroke(new Path2D(b.d))
@@ -126,7 +134,7 @@ Store.prototype.makeFramePreview=async function(frameN,snapshot){
     const x=await load(meta,"item");if(!x)continue;
     ctx.save();
     const b=bMap.get(x.b);
-    if(b){const clipped=await load(b,"boundary");if(clipped?.d)try{ctx.clip(new Path2D(clipped.d),"evenodd")}catch(err){}}
+    if(b)await clippedAncestors(b);
     const tr=x.t;
     if(tr){
       ctx.translate((tr.x||0)+(x.cx||0),(tr.y||0)+(x.cy||0));
