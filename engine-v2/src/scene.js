@@ -2,7 +2,7 @@ import { SpatialIndex, lineage, relatedTo } from "./spatial.js";
 export class Scene {
   constructor() {
     this.nodes = []; this.byId = new Map(); this.children = new Map();
-    this.pathCache = new Map(); this.worker = null; this.index = null;
+    this.pathCache = new Map(); this.imageCache = new Map(); this.relations = null; this.worker = null; this.index = null; this.onAsset = null;
     this.pending = new Map(); this.nextRequest = 0; this.version = 0;
     this.workerMode = false; this.ready = false;
   }
@@ -20,7 +20,7 @@ export class Scene {
       const siblings = this.children.get(node.parentId) || [];
       siblings.push(node.id); this.children.set(node.parentId, siblings);
     }
-    this.pathCache.clear();
+    this.pathCache.clear();this.imageCache.clear();this.relations=null;
     const metadata = nodes.map(n => ({ id: n.id, parentId: n.parentId, depth: n.depth, order: n.order, bbox: n.bbox }));
     try {
       if (typeof Worker === "undefined") throw Error("Worker unavailable");
@@ -64,17 +64,56 @@ export class Scene {
       this.worker.postMessage({ type: "query", id, rect, worldPerPixel, minPixels: 1.8 });
     });
   }
-  path(id) {
-    if (this.pathCache.has(id)) return this.pathCache.get(id);
-    const node = this.byId.get(id);
-    if (!node) return null;
-    const path = new Path2D(node.path);
-    this.pathCache.set(id, path);
-    if (this.pathCache.size > 1800) this.pathCache.delete(this.pathCache.keys().next().value);
+  path(id, pathIndex=-1) {
+    const key=pathIndex<0?id:id+":"+pathIndex;
+    if (this.pathCache.has(key)) {
+      const existing=this.pathCache.get(key);
+      this.pathCache.delete(key);this.pathCache.set(key,existing);
+      return existing;
+    }
+    const node=this.byId.get(id);
+    const source=pathIndex<0?node?.path:node?.artwork?.paths?.[pathIndex]?.d;
+    if(typeof source!=="string"||!source)return null;
+    let path;
+    try{path=new Path2D(source)}catch(error){console.warn("Invalid SVG path",id,error);return null}
+    this.pathCache.set(key,path);
+    while(this.pathCache.size>1600)this.pathCache.delete(this.pathCache.keys().next().value);
     return path;
   }
+  image(id) {
+    const node=this.byId.get(id),src=node?.artwork?.src;
+    if(!src || typeof src!=="string")return null;
+    const existing=this.imageCache.get(id);
+    if(existing)return existing.loaded?existing.image:null;
+    // Only load images supplied by the immutable published record; no synthetic fallback.
+    const image=new Image();
+    const record={image,loaded:false,error:false};
+    this.imageCache.set(id,record);
+    image.crossOrigin="anonymous";
+    image.onload=()=>{record.loaded=true;this.onAsset?.()};
+    image.onerror=()=>{record.error=true;this.onAsset?.()};
+    image.src=src;
+    return null;
+  }
+  imageStatus(id) {return this.imageCache.get(id)?.error?"unavailable":this.imageCache.get(id)?.loaded?"ready":"loading"}
   lineage(id) { return lineage(this.byId,id); }
-  related(id, selected) { return relatedTo(this.byId,id,selected); }
-  childCount(id) { return (this.children.get(id)||[]).length; }
+  related(id, selected) {
+    if(!selected)return true;
+    if(!this.relations||this.relations.selected!==selected) {
+      const related=new Set(lineage(this.byId,selected));
+      const node=this.byId.get(selected);
+      if(node?.parentId)for(const sibling of this.children.get(node.parentId)||[])related.add(sibling);
+      const pending=[selected];
+      while(pending.length) {
+        const next=pending.pop();
+        if(related.has(next)&&next!==selected)continue;
+        related.add(next);
+        for(const child of this.children.get(next)||[])if(!related.has(child))pending.push(child);
+      }
+      this.relations={selected,set:related};
+    }
+    return this.relations.set.has(id);
+  }
+  childCount(id) { return (this.children.get(id)||[]).filter(id=>this.byId.get(id)?.kind==='boundary').length; }
   destroy() { this.worker?.terminate(); this.worker=null; this.pending.clear(); }
 }
