@@ -1,6 +1,7 @@
 import { createDemoWorld } from "./model.js";
 import { Scene } from "./scene.js";
 import { CanvasRenderer, viewRect } from "./renderer.js";
+import { PublishedWorldReader,orderScene,expandRect,containsRect } from "./live.js";
 
 const $ = id => document.getElementById(id);
 const canvas = $("world"), scene = new Scene(), renderer = new CanvasRenderer(canvas,scene);
@@ -9,6 +10,107 @@ let visibleIds = [], selectedId = null, needQuery = false, queryRunning = false,
 let lastDraw = {drawn:0, ms:0}, lastQuery = {candidates:0,culledByLOD:0,queryMs:0};
 const pointers = new Map();
 let single=null, pinch=null, interacted=false, noticeTimer=null;
+let source="demo",reader=null,liveAbort=null,liveTimer=null,liveSequence=0;
+let loadedBounds=null,loadedExtent=Infinity,loadedFrame=1;
+let liveFrames=[{frame_n:1,status:"open"}],liveBusy=false;
+scene.onAsset=()=>invalidate(false);
+function showLiveStatus(message,isError=false) {
+  const node=$("live-status");node.hidden=!message;
+  node.textContent=message||"";node.classList.toggle("error",isError);
+}
+function syncControls() {
+  $("demo-controls").hidden=source!=="demo";
+  $("live-controls").hidden=source!=="live";
+  $("data-note").textContent=source==="demo"
+    ?"SYNTHETIC CURVES · ORIGINAL GEOMETRY PRESERVED · NO DATA WRITES"
+    :"PUBLISHED SUPABASE GEOMETRY · VIEWPORT-ONLY LOADING · READ ONLY";
+}
+function liveView(){
+  const rect=viewRect(camera,renderer.cssWidth,renderer.cssHeight);
+  const extent=(1100/camera.z/renderer.cssWidth)*1.8;
+  return{rect,extent};
+}
+function scheduleLiveRefresh(force=false) {
+  if(source!=="live")return;
+  const {rect,extent}=liveView();
+  if(!force&&loadedBounds&&containsRect(loadedBounds,rect)&&extent>=loadedExtent*.82)return;
+  clearTimeout(liveTimer);
+  liveTimer=setTimeout(()=>refreshLive(),force?0:320);
+}
+async function refreshLive(force=false) {
+  if(source!=="live")return;
+  const {rect,extent}=liveView();
+  if(!force&&loadedBounds&&containsRect(loadedBounds,rect)&&extent>=loadedExtent*.82)return;
+  const token=++liveSequence;
+  liveAbort?.abort();
+  const ctrl=new AbortController();liveAbort=ctrl;
+  liveBusy=true;$("mode-label").textContent="LOADING PUBLISHED ART…";
+  showLiveStatus("Loading only the published artwork near your camera…");
+  const bounds=expandRect(rect,1.7);
+  const selected=Number($("frame-select").value)||1;
+  const frames=liveFrames.filter(f=>f.frame_n<=selected).map(f=>f.frame_n);
+  if(!frames.includes(selected))frames.push(selected);
+  try {
+    const data=await reader.load(bounds,frames,extent,{signal:ctrl.signal,max:1400});
+    if(token!==liveSequence||source!=="live")return;
+    const nodes=orderScene(data.nodes);
+    await scene.setWorld(nodes);
+    if(token!==liveSequence||source!=="live")return;
+    visibleIds=[];lastQuery={candidates:0,culledByLOD:0,queryMs:0};
+    loadedBounds=bounds;loadedExtent=extent;loadedFrame=selected;
+    if(data.errors.length){
+      showLiveStatus("Found "+data.metadataCount+" published records, but "+data.missing+" could not load. Check Supabase bundle access. No art was modified.",true);
+      console.warn("Published bundles inaccessible",data.errors);
+    } else if(data.metadataCount===0){
+      showLiveStatus("No published curves are in this viewport yet. The shared database has not been populated here. Switch to Speed demo to keep exploring.");
+    } else if(data.truncated) {
+      showLiveStatus("Loaded "+data.nodes.length+" pieces. This viewport exceeds the 1,400-record safety limit; zoom deeper for full detail.",true);
+    } else showLiveStatus("");
+    $("mode-label").textContent=data.errors.length?"BUNDLE ACCESS ERROR":"SHARED WORLD · "+nodes.length+" LOADED";
+    liveBusy=false;invalidate(false);
+    // Re-query against the worker index using the current camera, which may have moved during transfer.
+    needQuery=true;invalidate();
+  }catch(error){
+    if(token!==liveSequence||ctrl.signal.aborted)return;
+    liveBusy=false;
+    $("mode-label").textContent="SHARED WORLD ERROR";
+    showLiveStatus("Could not load the shared canvas: "+String(error.message||error)+". The speed demo is still available.",true);
+    console.error("Published world read failed",error);
+  }
+}
+async function openLiveWorld() {
+  source="live";++liveSequence;clearTimeout(liveTimer);
+  loadedBounds=null;loadedExtent=Infinity;visibleIds=[];
+  scene.ready=false;scene.nodes=[];scene.byId.clear();scene.pathCache.clear();
+  lastQuery={candidates:0,culledByLOD:0,queryMs:0};
+  reader=reader||new PublishedWorldReader();
+  syncControls();showLiveStatus("Connecting to the published canvas…");
+  invalidate(false);
+  try {
+    liveFrames=await reader.listFrames();
+    if(source!=="live")return;
+    const select=$("frame-select");
+    select.replaceChildren(...liveFrames.map(frame=>{
+      const option=document.createElement("option");
+      option.value=frame.frame_n;
+      option.textContent="Frame "+frame.frame_n;
+      return option;
+    }));
+    select.value=String(liveFrames.at(-1).frame_n);
+    refreshLive(true);
+  }catch(error){
+    if(source!=="live")return;
+    $("mode-label").textContent="SHARED WORLD ERROR";
+    showLiveStatus("Could not list published frames: "+String(error.message||error),true);
+  }
+}
+function openDemoWorld(){
+  source="demo";++liveSequence;liveAbort?.abort();clearTimeout(liveTimer);
+  loadedBounds=null;loadedExtent=Infinity;
+  showLiveStatus("");syncControls();
+  loadWorld(+$("sample-count").value);
+}
+
 const format=n=>Number(n||0).toLocaleString("en-US");
 
 function notice(message) {
@@ -19,7 +121,7 @@ function markInteraction() {
   if(!interacted){interacted=true;$("intro").style.opacity=".12"}
 }
 function invalidate(query=true) {
-  if(query)needQuery=true;
+  if(query){needQuery=true;if(source==="live")scheduleLiveRefresh()}
   if(!scheduled){scheduled=true;requestAnimationFrame(draw)}
 }
 function draw() {
@@ -47,6 +149,7 @@ function updateMetrics(){
   $("m-visible").textContent=format(lastQuery.candidates);
   $("m-drawn").textContent=format(lastDraw.drawn);
   $("m-ms").textContent=lastDraw.ms;
+  $("m-total").title=source==="live"?"Published geometry loaded near this viewport":"Synthetic curve count";
 }
 function point(ev) {
   const rect=canvas.getBoundingClientRect();
@@ -74,7 +177,7 @@ function inspect(id) {
   const node=scene.byId.get(id);
   panel.hidden=false;
   $("region-name").textContent=node.name;
-  $("region-author").textContent=node.author+" · closed SVG curve";
+  $("region-author").textContent=node.author+" · published closed curve";
   $("region-depth").textContent=node.depth;
   $("region-children").textContent=format(scene.childCount(id));
   const ancestry=scene.lineage(id);
@@ -154,7 +257,10 @@ $("zoom-out").onclick=()=>zoomAt(camera.z/1.5);
 $("reset-view").onclick=$("fit-view").onclick=()=>{camera.x=500;camera.y=500;camera.z=1.18;inspect(null);invalidate()};
 $("close-inspector").onclick=()=>inspect(null);
 $("focus-region").onclick=()=>focus(scene.byId.get(selectedId));
-$("sample-count").onchange=event=>loadWorld(+event.target.value);
+$("sample-count").onchange=event=>{if(source==="demo")loadWorld(+event.target.value)};
+$("world-mode").onchange=event=>event.target.value==="live"?openLiveWorld():openDemoWorld();
+$("frame-select").onchange=()=>{loadedBounds=null;refreshLive(true)};
+$("sync-world").onclick=()=>{loadedBounds=null;refreshLive(true)};
 function resize(){
   renderer.resize();
   invalidate();
@@ -167,6 +273,7 @@ window.addEventListener("keydown",e=>{
   if(e.key==="-")zoomAt(camera.z/1.5);
 });
 async function loadWorld(count){
+  if(source!=="demo")return;
   $("mode-label").textContent="BUILDING SPATIAL INDEX…";
   scene.ready=false;visibleIds=[];selectedId=null;$("inspector").hidden=true;
   invalidate(false);
@@ -184,4 +291,5 @@ async function loadWorld(count){
   }
 }
 renderer.resize();
+syncControls();
 loadWorld(14000);
