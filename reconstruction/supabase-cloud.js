@@ -253,9 +253,8 @@ class Cloud{
     return{items:list.map(x=>({...this.metadata(x),key:x.id})),hasMore:(data||[]).length>count,nextCursor:list.at(-1)?.id||null}
   }
   async palette(){
-    const params=new URLSearchParams({select:"color",world_id:"eq."+this.world,kind:"eq.boundary",published:"eq.true",limit:"1000"});
-    const rows=await this.request("/rest/v1/if_shared_nodes?"+params.toString(),{auth:false});
-    return[...new Set((rows||[]).map(x=>x.color?.toLowerCase()).filter(x=>/^#[a-f0-9]{6}$/.test(x)))].slice(0,70)
+    const data=await this.request("/rest/v1/rpc/if_shared_palette",{method:"POST",json:{p_world:this.world,p_limit:80},auth:false});
+    return(data||[]).map(x=>x.color).filter(x=>/^#[a-f0-9]{6}$/i.test(x||""));
   }
   async resolve(id){
     let row=this.remoteById.get(id);
