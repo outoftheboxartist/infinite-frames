@@ -14,6 +14,7 @@ let world=worldFromLink();if(!validWorld(world))world=read(WORLD_KEY,null);
 if(!validWorld(world))world="if-test-"+randomHex(16);
 write(WORLD_KEY,world);
 const profiles=()=>read(PROFILE_KEY,[]);
+function renameActive(name){const p=active();if(!p)return;const list=profiles(),row=list.find(x=>x.id===p.id);if(row){row.name=String(name||"").trim().slice(0,32)||row.name;write(PROFILE_KEY,list);showStatus(info.message,info.cloud)}}
 const active=()=>profiles().find(p=>p.id===read(ACTIVE_KEY,null))||null;
 const el=(tag,label,style)=>{const v=root.document.createElement(tag);if(label!==null)v.textContent=label;if(style)v.style.cssText=style;return v};
 const btn="min-height:39px;border:1px solid #50667f;border-radius:10px;background:#203246;color:#eaf3ff;font:700 12px system-ui;padding:9px;cursor:pointer";
@@ -142,18 +143,19 @@ async function request(method,body){
  }finally{clearTimeout(timer)}
 }
 function createBackend(){
- let state=empty(),rev=0,synced=false,loaded=false,channel=null;
+ let state=empty(),rev=0,synced=false,loaded=false,channel=null,pendingReset=false;
  const subscribers=new Set();
  const notify=e=>{for(const fn of subscribers)try{fn(e)}catch(err){console.warn("Guest event listener",err)}};
  const mark=(message,cloud)=>{synced=cloud;info.local=loaded;showStatus(message,cloud)};
  const loadRemote=async()=>{const rows=await request("GET");const item=rows?.[0];return item&&validDoc(item.doc)?{doc:item.doc,revision:item.revision||0}:null};
  async function load(){
   const local=await localRead();
-  if(validDoc(local?.doc)){state=local.doc;rev=local.revision||0}
+  if(validDoc(local?.doc)){state=local.doc;rev=local.revision||0;pendingReset=!!local.pendingReset}
   try{
    const remote=await loadRemote();
-   if(remote){state=merge(state,remote.doc);rev=Math.max(rev,remote.revision);await localWrite({doc:state,revision:rev});mark("Shared test world loaded from Supabase",true)}
-   else mark("Test canvas loaded; cloud backup on next save",true);
+   if(remote&&!pendingReset){state=merge(state,remote.doc);rev=Math.max(rev,remote.revision);await localWrite({doc:state,revision:rev});mark("Shared test world loaded from Supabase",true)}
+   else if(pendingReset){await sync(true)}
+   else mark("Test canvas loaded; cloud backup on next save",false);
   }catch(e){mark("Local testing: "+e.message,false)}
   loaded=true;
   if(typeof BroadcastChannel!=="undefined"){
@@ -175,16 +177,18 @@ function createBackend(){
   return state;
  }
  async function sync(replace=false){
+  replace=replace||pendingReset;
   let cloud;
   try{cloud=await loadRemote()}catch(e){mark("Saved locally; cloud unavailable: "+e.message,false);return false}
   if(cloud){if(!replace)state=merge(state,cloud.doc);rev=Math.max(rev,cloud.revision)+1;await localWrite({doc:state,revision:rev})}
   try{
    await request("POST",{id:world,doc:state,revision:rev,updated_at:new Date().toISOString()});
+   pendingReset=false;await localWrite({doc:state,revision:rev,pendingReset:false});
    mark("Saved to isolated Supabase test world",true);return true;
   }catch(e){mark("Saved locally; cloud unavailable: "+e.message,false);return false}
  }
  async function save(replace=false){
-  rev++;await localWrite({doc:state,revision:rev});loaded=true;
+  rev++;if(replace)pendingReset=true;await localWrite({doc:state,revision:rev,pendingReset});loaded=true;
   mark("Saved on this device",false);
   channel?.postMessage({type:"update"});
   await sync(replace);
@@ -224,5 +228,5 @@ function createBackend(){
  };
  current=backend;return backend;
 }
-root.IFGuest={start,createBackend,openProfiles:()=>profileDialog(false),active,world,getStatus:()=>({...info})};
+root.IFGuest={start,createBackend,openProfiles:()=>profileDialog(false),active,renameActive,world,getStatus:()=>({...info})};
 })(typeof window!=="undefined"?window:globalThis);
