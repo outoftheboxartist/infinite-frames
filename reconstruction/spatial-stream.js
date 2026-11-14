@@ -91,7 +91,7 @@ Store.prototype.loadViewport=async function(view,options={}){
 };
 Store.prototype.getFramePreview=async function(frameN){
   await this.open();const t=this.db.transaction(["previews"],"readonly");
-  const record=await idb(t.objectStore("previews").get("frame:"+frameN));return record?.version===2?record.url:null;
+  const record=await idb(t.objectStore("previews").get("frame:"+frameN));return record?.version===3?record.url:null;
 };
 Store.prototype.invalidateFramePreview=async function(frameN){
   await this.open();const t=this.db.transaction(["previews"],"readwrite");
@@ -162,7 +162,7 @@ Store.prototype.makeFramePreview=async function(frameN,snapshot){
   // This small preview is not a replacement for any stored path or source photo.
   const url=canvas.toDataURL("image/webp",.82);
   const t=this.db.transaction(["previews"],"readwrite");
-  t.objectStore("previews").put({key:"frame:"+frameN,url,at:Date.now(),version:2});await complete(t);
+  t.objectStore("previews").put({key:"frame:"+frameN,url,at:Date.now(),version:3});await complete(t);
   return url;
 };
 S.tileEntries=tileEntries;S.tileKeys=tileKeys;S.viewportRect=viewport;
