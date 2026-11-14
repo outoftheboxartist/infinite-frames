@@ -126,7 +126,7 @@ function merge(a,b){
  const result={...empty()};
  for(const k of ["boundaries","items","messages","votes","events"])result[k]=unique(a[k]||[],b[k]||[],v=>k==="votes"?v.msgId+"|"+v.voterId:v.id);
  const frames=new Map((b.frames||[]).map(x=>[x.n,x]));
- for(const f of a.frames||[])frames.set(f.n,{...(frames.get(f.n)||{}),...f});
+ for(const f of a.frames||[]){const previous=frames.get(f.n);frames.set(f.n,{...(previous||{}),...f,status:previous?.status==="published"||f.status==="published"?"published":"open"})}
  result.frames=[...frames.values()].sort((x,y)=>x.n-y.n);
  if(!result.frames.length)result.frames=[{n:1,status:"open"}];
  return result;
