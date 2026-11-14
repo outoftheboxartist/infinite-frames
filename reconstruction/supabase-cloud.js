@@ -19,7 +19,8 @@ class Cache{
       if(!root.indexedDB){resolve(null);return}
       const request=root.indexedDB.open("if-cloud-cache-v1",2);
       request.onupgradeneeded=()=>{if(!request.result.objectStoreNames.contains("bundles"))request.result.createObjectStore("bundles",{keyPath:"path"});if(!request.result.objectStoreNames.contains("viewports"))request.result.createObjectStore("viewports",{keyPath:"key"})};
-      request.onsuccess=()=>{this.db=request.result;resolve(this.db)};
+      request.onsuccess=()=>{this.db=request.result;this.db.onversionchange=()=>this.db.close();resolve(this.db)};
+      request.onblocked=()=>{console.warn("Another tab is holding an older cloud cache; continuing without persistent cache");resolve(null)};
       request.onerror=()=>{console.warn("Cloud bundle cache unavailable");resolve(null)};
     });return this.opening
   }
@@ -280,8 +281,8 @@ class Cloud{
     const sourceItems=(payload.items||[]),boundaries=payload.boundaries||[];
     const entries=[];
     const uploadSource=async data=>{
-      const match=/^data:(image\/(?:png|jpeg|webp|gif));base64,/.exec(data||"");
-      if(!match)throw Error("Unsupported original image format; export a PNG, JPEG, WebP, or GIF first");
+      const match=/^data:(image\/(?:png|jpeg|webp|gif|heic|heif));base64,/.exec(data||"");
+      if(!match)throw Error("Unsupported original image format; provide a supported PNG, JPEG, WebP, GIF, or HEIC/HEIF source");
       const mime=match[1],ext=mime.split("/")[1],blob=await(await this.fetcher(data)).blob();
       const path=uid+"/"+randomId()+"."+ext;
       await this.upload("if-shared-originals",path,blob,mime);
