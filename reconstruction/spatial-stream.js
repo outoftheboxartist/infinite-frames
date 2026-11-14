@@ -8,20 +8,26 @@ if(!root.IFSpatial)return;
 const S=root.IFSpatial,Store=S.Store,MAX_LEVEL=9;
 const tileKey=(type,frame,level,x,y)=>(type==="boundary"?"b":"i"+frame)+":"+level+":"+x+":"+y;
 function tileEntries(meta){
-  const b=meta.bbox||{x:0,y:0,w:1000,h:1000},size=Math.max(.001,Number(b.w)||.001,Number(b.h)||.001);
-  let level=Math.max(0,Math.min(MAX_LEVEL,Math.floor(Math.log2(1000/size))));
-  // A bounding box may cross an internal cell boundary. Index into at most 4 cells.
-  let cell=1000/2**level,x0=Math.floor(b.x/cell),y0=Math.floor(b.y/cell),
+  const b=meta.bbox||{x:0,y:0,w:1000,h:1000},span=Math.max(.001,Number(b.w)||.001,Number(b.h)||.001);
+  const home=Math.max(0,Math.min(MAX_LEVEL,Math.floor(Math.log2(1000/span))));
+  // Store a path in its exact-scale tile and two ancestor levels.
+  // The ancestor records are *indexes only*, not simplified copies of geometry.
+  // This prevents fine curves disappearing when a mobile viewport uses fewer tile reads.
+  const levels=[...new Set([home,Math.max(0,home-2),Math.max(0,home-4)])];
+  const out=[],seen=new Set();
+  for(let level of levels){
+    let cell=1000/2**level,x0=Math.floor(b.x/cell),y0=Math.floor(b.y/cell),
       x1=Math.floor((b.x+b.w-1e-8)/cell),y1=Math.floor((b.y+b.h-1e-8)/cell);
-  while((x1-x0>1||y1-y0>1)&&level>0){
-    level--;cell=1000/2**level;
-    x0=Math.floor(b.x/cell);y0=Math.floor(b.y/cell);
-    x1=Math.floor((b.x+b.w-1e-8)/cell);y1=Math.floor((b.y+b.h-1e-8)/cell);
-  }
-  const out=[];
-  for(let x=x0;x<=x1&&x<x0+3;x++)for(let y=y0;y<=y1&&y<y0+3;y++){
-    const t=tileKey(meta.recordType,meta.frameN||1,level,x,y);
-    out.push({id:t+"|"+meta.key,tileKey:t,recordKey:meta.key});
+    while((x1-x0>1||y1-y0>1)&&level>0){
+      level--;cell=1000/2**level;
+      x0=Math.floor(b.x/cell);y0=Math.floor(b.y/cell);
+      x1=Math.floor((b.x+b.w-1e-8)/cell);y1=Math.floor((b.y+b.h-1e-8)/cell);
+    }
+    for(let x=x0;x<=x1&&x<x0+3;x++)for(let y=y0;y<=y1&&y<y0+3;y++){
+      const t=tileKey(meta.recordType,meta.frameN||1,level,x,y);
+      const id=t+"|"+meta.key;
+      if(!seen.has(id)){seen.add(id);out.push({id,tileKey:t,recordKey:meta.key})}
+    }
   }
   return out;
 }
