@@ -40,7 +40,7 @@ export class CanvasRenderer {
       const parents=this.scene.lineage(id).slice(1).reverse();
       for(const pid of parents){const ancestor=this.scene.path(pid);if(ancestor)ctx.clip(ancestor)}
       const isRelated=this.scene.related(id,selectedId);
-      ctx.globalAlpha=selectedId&&!isRelated?.19:1;
+      ctx.globalAlpha=(selectedId && !isRelated) ? 0.19 : 1;
       ctx.fillStyle=node.color;
       ctx.fill(path);
       ctx.strokeStyle=node.depth===0?"#b6c4d633":"#ffffff2c";
