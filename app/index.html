@@ -64,6 +64,22 @@ class Cloud{
     this.remoteById=new Map();this.cloudLatest="";
     this.session=null;this.signedInListeners=new Set();
     try{this.session=JSON.parse(root.localStorage.getItem(storageKey)||"null")}catch(e){}
+    this.authCallback=this.consumeAuthRedirect();
+  }
+  async consumeAuthRedirect(){
+    // Supabase returns verified implicit-flow sessions in the URL fragment.
+    const params=new URLSearchParams((root.location.hash||"").replace(/^#/,""));
+    const access_token=params.get("access_token"),refresh_token=params.get("refresh_token");
+    if(!access_token||!refresh_token||params.get("token_type")&&params.get("token_type").toLowerCase()!=="bearer")return;
+    this.saveSession({access_token,refresh_token,expires_in:Math.max(60,Number(params.get("expires_in"))||3600)});
+    // Remove tokens from the address bar before loading other application assets.
+    try{root.history.replaceState(root.history.state,"",root.location.pathname+root.location.search)}catch(e){}
+    try{
+      const result=await this.fetcher(this.base+"/auth/v1/user",{headers:{apikey:this.key,Authorization:"Bearer "+access_token}});
+      if(!result.ok)throw Error("Could not load verified profile");
+      const user=await result.json();
+      if(this.session?.access_token===access_token)this.saveSession({...this.session,user});
+    }catch(e){console.warn("Verified email session needs a fresh sign-in",e)}
   }
   notify(){this.signedInListeners.forEach(fn=>{try{fn(this.session)}catch(e){}})}
   async request(path,options={}){
@@ -110,18 +126,21 @@ class Cloud{
     const session=await this.authRequest("/token?grant_type=password",{email,password});this.saveSession(session);return this.session
   }
   async signUp(email,password){
-    const data=await this.authRequest("/signup",{email,password});
+    const returnTo=root.location.origin+root.location.pathname;
+    const data=await this.authRequest("/signup?redirect_to="+enc(returnTo),{email,password});
     if(data.access_token)this.saveSession(data);
     return data
   }
   async sendOtp(email){
-    return this.authRequest("/otp",{email,create_user:true,options:{email_redirect_to:root.location.origin}})
+    const returnTo=root.location.origin+root.location.pathname;
+    return this.authRequest("/otp?redirect_to="+enc(returnTo),{email,create_user:true})
   }
   async verifyOtp(email,token){
     const data=await this.authRequest("/verify",{email,token,type:"email"});this.saveSession(data);return this.session
   }
   async signOut(){const tok=this.session?.access_token;this.saveSession(null);if(tok)try{await this.fetcher(this.base+"/auth/v1/logout",{method:"POST",headers:{apikey:this.key,Authorization:"Bearer "+tok}})}catch(e){}}
   async requireUser(){
+    if(this.authCallback)await this.authCallback;
     const token=await this.accessToken();const uid=this.session?.user?.id;
     if(!token||!uid)throw Error("Sign in to Cloud Sync before publishing. Your unpublished artwork is still safe.");
     return uid
