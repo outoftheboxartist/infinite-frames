@@ -1,12 +1,17 @@
 // Explicit, read-only V1 archive bridge. Source geometry and authorship are not altered.
 // The legacy file is JavaScript; extract its JSON literal without ever executing the script.
-export const LEGACY_URL="https://raw.githubusercontent.com/outoftheboxartist/infinite-frames/rebuild/source/app/local-state.js";
+export const LEGACY_URL="./data/legacy-five-frames.json";
 export function parseLegacyArchive(text) {
   const prefix="window.__ST=";
-  if(typeof text!=="string"||!text.startsWith(prefix))throw Error("Not an Infinite Frames archive");
-  const end=text.indexOf(";try{localStorage.clear()",prefix.length);
-  if(end<0)throw Error("Archive does not have the expected format");
-  const obj=JSON.parse(text.slice(prefix.length,end));
+  if(typeof text!=="string")throw Error("Not an Infinite Frames archive");
+  let obj;
+  if(text.trimStart().startsWith("{"))obj=JSON.parse(text);
+  else{
+    if(!text.startsWith(prefix))throw Error("Not an Infinite Frames archive");
+    const end=text.indexOf(";try{localStorage.clear()",prefix.length);
+    if(end<0)throw Error("Archive does not have the expected format");
+    obj=JSON.parse(text.slice(prefix.length,end));
+  }
   if(!Array.isArray(obj.boundaries)||!Array.isArray(obj.items)||!Array.isArray(obj.frames))
     throw Error("Legacy archive is missing artwork collections");
   return obj;
