@@ -1,0 +1,25 @@
+name: Infinite Frames original app spatial regression
+on:
+  push:
+    branches:
+      - fix/original-app-spatial-navigation-20261114
+    paths:
+      - app/index.html
+      - app/tests/**
+      - .github/workflows/if-original-spatial.yml
+  pull_request:
+    paths:
+      - app/index.html
+      - app/tests/**
+      - .github/workflows/if-original-spatial.yml
+permissions:
+  contents: read
+jobs:
+  spatial-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Check original Infinite Frames spatial behavior
+        run: node --test app/tests/*.test.mjs
