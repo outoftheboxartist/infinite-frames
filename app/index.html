@@ -789,19 +789,28 @@ async function IFInPageCamera(onPhoto,onFallback){
   const cancel=()=>{if(done)return;done=true;cleanup()};
   makeButton("Cancel",cancel);
   makeButton("Choose existing photo",()=>{if(done)return;done=true;cleanup();onFallback()});
-  const snap=makeButton("Take photo",()=>{if(done||!vid.videoWidth||!vid.videoHeight)return;done=true;snap.disabled=true;status.textContent="Preparing photo…";
-    const scale=Math.min(1,1280/Math.max(vid.videoWidth,vid.videoHeight));
-    const c=document.createElement("canvas");c.width=Math.max(1,Math.round(vid.videoWidth*scale));c.height=Math.max(1,Math.round(vid.videoHeight*scale));
-    const ctx=c.getContext("2d");if(!ctx){done=false;status.textContent="Camera capture not supported";snap.disabled=false;return}
-    ctx.drawImage(vid,0,0,c.width,c.height);
-    c.toBlob(blob=>{if(!blob){done=false;snap.disabled=false;status.textContent="Could not capture photo";return}
-      const file=new File([blob],"IF-photo-"+Date.now()+".jpg",{type:"image/jpeg",lastModified:Date.now()});
+  const snap=makeButton("Take photo",async()=>{if(done||!vid.videoWidth||!vid.videoHeight)return;done=true;snap.disabled=true;status.textContent="Capturing full-quality photo…";
+    try{
+      const track=stream&&stream.getVideoTracks()[0];let blob=null;
+      // Android Chrome may expose a full-resolution still capture from the camera.
+      if(track&&typeof ImageCapture!=="undefined"){
+        try{blob=await new ImageCapture(track).takePhoto()}catch(e){console.warn("Still capture fallback",e)}
+      }
+      if(!blob){
+        // Fallback keeps every pixel of the current camera stream, no 1280px cap.
+        const c=document.createElement("canvas");c.width=vid.videoWidth;c.height=vid.videoHeight;
+        const ctx=c.getContext("2d");if(!ctx)throw Error("Camera capture unsupported");
+        ctx.drawImage(vid,0,0);
+        blob=await new Promise((resolve,reject)=>c.toBlob(x=>x?resolve(x):reject(Error("Capture failed")),"image/png"));
+      }
+      const type=blob.type||"image/png",ext=/jpeg/i.test(type)?"jpg":/webp/i.test(type)?"webp":"png";
+      const file=new File([blob],"IF-photo-"+Date.now()+"."+ext,{type,lastModified:Date.now()});
       cleanup();onPhoto(file)
-    },"image/jpeg",.86)
+    }catch(err){done=false;snap.disabled=false;status.textContent="Could not capture photo: "+(err.message||err)}
   });snap.disabled=true;
   layer.append(title,vid,status,bar);document.body.appendChild(layer);
   try{
-    stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:960}}});
+    stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:"environment"},width:{ideal:3840},height:{ideal:2160}}});
     if(done){for(const track of stream.getTracks())track.stop();return}
     vid.srcObject=stream;await vid.play();snap.disabled=false;status.textContent="Capture a photo, then choose its tracing settings";
   }catch(err){if(stream)for(const track of stream.getTracks())track.stop();stream=null;vid.style.display="none";snap.disabled=true;status.textContent="Camera permission unavailable. Choose an existing photo or Cancel."}
