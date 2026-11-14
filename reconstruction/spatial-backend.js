@@ -8,7 +8,7 @@ root.IFSpatial.createBackend=function(config){
   const listeners=new Set(),presences=new Set(),peers=new Map();
   const id=Math.random().toString(36).slice(2);
   const channel=typeof root.BroadcastChannel==="function"?new root.BroadcastChannel("if-spatial-channel-v1"):null;
-  let fallback=null,initializing=null,snapshot=null,spatial=null,previewJobs=new Map();
+  let fallback=null,initializing=null,snapshot=null,spatial=null,previewJobs=new Map(),previewQueue=Promise.resolve();
   const latest=()=>snapshot||{boundaries:[],items:[],frames:[{n:1,status:"open"}],messages:[],votes:[],events:[]};
   const notify=event=>listeners.forEach(fn=>{try{fn(event)}catch(e){console.warn("Spatial listener failed",e)}});
   const applyEvent=(event)=>{
@@ -49,16 +49,7 @@ root.IFSpatial.createBackend=function(config){
           await spatial.importLegacy(legacy);
           snapshot=await spatial.loadShell();
         }
-        // Preview creation runs *after* lightweight metadata bootstrap, not on the critical path.
-        if(legacy&&typeof spatial.makeFramePreview==="function"){
-          const previous=legacy;
-          Promise.resolve().then(async()=>{
-            for(const frame of previous.frames||[]){
-              try{const url=await spatial.makeFramePreview(frame.n,previous);
-                if(url)notify({type:"preview",row:{frameN:frame.n,url}})}catch(err){console.warn("Frame preview unavailable",err)}
-            }
-          });
-        }
+        // Frame thumbnails are generated lazily, one at a time when requested.
         if(!snapshot)throw Error("Spatial migration did not produce a readable snapshot");
         return snapshot;
       }catch(err){
@@ -75,19 +66,23 @@ root.IFSpatial.createBackend=function(config){
     await init();
     if(fallback)return fallback.publish(payload);
     const current=latest();
-    const boundaries=[...current.boundaries],items=[...current.items],events=[...current.events];
+    const boundaries=[...current.boundaries],items=[...current.items],events=[...current.events],cleanItems=(payload.items||[]).map(({originalImage,...item})=>item);
     for(const b of payload.boundaries||[])if(!boundaries.some(x=>x.id===b.id))boundaries.push(b);
-    for(const i of payload.items||[])if(!items.some(x=>x.id===i.id))items.push(i);
+    for(const i of cleanItems)if(!items.some(x=>x.id===i.id))items.push(i);
     for(const e of payload.events||[])if(!events.some(x=>x.id===e.id))events.push(e);
     const next={...current,boundaries,items,events};
     await spatial.putPublication(payload,{frames:next.frames,messages:next.messages,votes:next.votes,events:next.events});
     snapshot=next;
     if(spatial&&typeof spatial.invalidateFramePreview==="function"){
       const frames=[...new Set([...(payload.items||[]),...(payload.boundaries||[])].map(x=>x.frameN||1))];
-      for(const frame of frames)spatial.invalidateFramePreview(frame).catch(console.warn);
+      for(const frame of frames){
+        spatial.invalidateFramePreview(frame)
+          .then(()=>{notify({type:"preview",row:{frameN:frame,url:null}});if(backend?.framePreview)backend.framePreview(frame)})
+          .catch(err=>console.warn("Could not refresh frame preview",err));
+      }
     }
-    for(const b of payload.boundaries||[])publishEvent({type:"boundary",row:b});
-    for(const i of payload.items||[])publishEvent({type:"item",row:i});
+        for(const b of payload.boundaries||[])publishEvent({type:"boundary",row:b});
+    for(const i of cleanItems)publishEvent({type:"item",row:i});
     for(const e of payload.events||[])publishEvent({type:"event",row:e});
   }
   const backend={
@@ -149,7 +144,7 @@ root.IFSpatial.createBackend=function(config){
       await init();if(!spatial||!spatial.getFramePreview)return null;
       const old=await spatial.getFramePreview(frameN);if(old)return old;
       if(!previewJobs.has(frameN)){
-        const job=spatial.makeFramePreview(frameN).then(url=>{if(url)notify({type:"preview",row:{frameN,url}});return url}).catch(err=>{console.warn("Could not make frame preview",err);return null}).finally(()=>previewJobs.delete(frameN));
+        const job=previewQueue.then(()=>spatial.makeFramePreview(frameN)).then(url=>{if(url)notify({type:"preview",row:{frameN,url}});return url}).catch(err=>{console.warn("Could not make frame preview",err);return null}).finally(()=>previewJobs.delete(frameN));previewQueue=job.then(()=>null,()=>null);
         previewJobs.set(frameN,job);
       }
       return previewJobs.get(frameN);
