@@ -122,7 +122,7 @@ export function convertPublishedEntry(m,data){
     x:(bbox.minX+bbox.maxX)/2,y:(bbox.minY+bbox.maxY)/2,
     r:Math.max(bbox.maxX-bbox.minX,bbox.maxY-bbox.minY)/2,
     path:kind==="boundary"?data.d||"":data.type==="stroke"?data.d||"":null,
-    artwork:kind==="item"?data:null
+    artwork:kind==="item"?data:null,outlineOnly:kind==="boundary"
   };
   if(kind==="boundary"&&!node.path)return null;
   if(kind==="item"&&!["vector","image","stroke"].includes(data.type))node.unsupported=true;
