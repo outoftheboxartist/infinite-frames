@@ -78,7 +78,7 @@ Store.prototype.loadViewport=async function(view,options={}){
   const metadata=await this.visibleMetadata(view,options);
   const pairs=await Promise.all(metadata.map(async m=>{
     const g=await this.geometry(m.key);
-    return {kind:m.recordType,entry:S.join(m,g)};
+    const entry=S.join(m,g);if(m.recordType==="item"&&entry?.type==="vector"&&entry.preferOriginal&&entry.sourceRect){const src=await this.getOriginalSource(entry.id);if(src)entry.renderSrc=src}return {kind:m.recordType,entry};
   }));
   // Classify by the indexed recordType, NOT the optional artwork.type.
   // Founding boundaries ("Prism", etc.) have no `type` field in the original data.
@@ -134,7 +134,18 @@ Store.prototype.makeFramePreview=async function(frameN,snapshot){
       ctx.translate(-(x.cx||0),-(x.cy||0));
     }
     try{
-      if(x.type==="vector")for(const p of x.paths||[]){ctx.fillStyle=p.color||"#fff";ctx.fill(new Path2D(p.d),"evenodd")}
+      if(x.type==="vector"&&x.preferOriginal&&x.sourceRect){
+        const src=await this.getOriginalSource(x.id);
+        if(src){
+          const img=await image(src),R=x.sourceRect,tr=x.sourceTransform||{x:0,y:0,s:1,r:0};
+          const cx=x.sourceCx??R.x+R.w/2,cy=x.sourceCy??R.y+R.h/2;
+          ctx.save();ctx.translate(cx+(tr.x||0),cy+(tr.y||0));ctx.rotate((tr.r||0)*Math.PI/180);ctx.scale(tr.s||1,tr.s||1);ctx.translate(-cx,-cy);
+          const ratio=Math.max(R.w/img.width,R.h/img.height),iw=img.width*ratio,ih=img.height*ratio;
+          ctx.beginPath();ctx.rect(R.x,R.y,R.w,R.h);ctx.clip();
+          ctx.drawImage(img,R.x+(R.w-iw)/2,R.y+(R.h-ih)/2,iw,ih);ctx.restore();
+        }else for(const p of x.paths||[]){ctx.fillStyle=p.color||"#fff";ctx.fill(new Path2D(p.d),"evenodd")}
+      }
+      else if(x.type==="vector")for(const p of x.paths||[]){ctx.fillStyle=p.color||"#fff";ctx.fill(new Path2D(p.d),"evenodd")}
       else if(x.type==="stroke"){ctx.strokeStyle=x.color||"#fff";ctx.lineWidth=x.w||1;ctx.lineJoin="round";ctx.lineCap="round";ctx.stroke(new Path2D(x.d))}
       else if(x.src){const img=await image(x.src);ctx.drawImage(img,x.x||0,x.y||0,x.w||100,x.h||100)}
     }catch(err){}
