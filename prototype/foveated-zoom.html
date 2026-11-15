@@ -17,6 +17,7 @@ body{font-family:var(--sans)}
 #c2d{visibility:hidden}
 #stage.nogl #c2d{visibility:visible}
 .who{flex:none}
+.top{text-shadow:0 0 4px var(--bg),0 0 10px var(--bg);}
 .top{position:fixed;top:0;left:0;right:0;pointer-events:none;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;
   padding-top:calc(env(safe-area-inset-top,0px) + 12px);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .read{display:grid;gap:2px;min-width:0}
@@ -58,7 +59,7 @@ button:focus-visible{outline:2px solid var(--yel);outline-offset:-2px}
     <div class="mag" id="mag">×1.0 total · 1.00 of 8×</div>
     <div class="crumb" id="crumb">root</div>
     <div class="perf" id="perf">– fps</div>
-    <div class="hint" id="hint">Pinch or scroll to zoom. Every 8× the view resets into a fresh 1000×1000 canvas. Detail stays sharp near your finger and dissolves into primaries at the edges.</div>
+    <div class="hint" id="hint">Pinch or scroll to zoom. Every 8× the view resets into a fresh 1000×1000 canvas. Detail stays sharp near your finger and dissolves into prismatic sparkles at the edges.</div>
   </div>
   <div class="who">
     <div id="people"></div>
@@ -77,7 +78,7 @@ button:focus-visible{outline:2px solid var(--yel);outline-offset:-2px}
       <button data-c="#f6cf1a" aria-pressed="false" aria-label="Yellow ink"><span style="background:#f6cf1a"></span></button>
       <button data-c="#1f4fd0" aria-pressed="false" aria-label="Blue ink"><span style="background:#1f4fd0"></span></button>
     </div>
-    <button id="bDither" class="ghost" aria-pressed="true" title="Toggle dithered edges (D)">Dither</button>
+    <button id="bDither" class="ghost" aria-pressed="true" title="Edge style: Prism, Blocks or Off (D)">Prism</button>
     <button id="bHome" class="ghost" title="Back to the top canvas (H)">Top</button>
   </div>
 </div>
@@ -182,19 +183,23 @@ const stage=document.getElementById("stage"), c2d=document.getElementById("c2d")
 const g2=c2d.getContext("2d",{alpha:false});
 let W=0,H=0,dpr=1,fit=1;
 let cur=ROOT; const cam={x:0,y:0}; let scale=1;         // screen = cam + scale·p  (p in cur's 0–1000 coords)
-let dirty=true, dither=true, mode="move", ink=INK;
+let dirty=true, style=2, mode="move", ink=INK, glS=1;
+const STYLES=["Off","Blocks","Prism"];
+let lastInk=null;
 const focus={x:0,y:0,tx:0,ty:0,lastX:-1e9,lastY:-1e9};
 let focusR=200;
 
 function resize(){
   const ow=W, oh=H;
   W=innerWidth; H=innerHeight; dpr=Math.min(devicePixelRatio||1,MAXDPR);
-  for(const c of [c2d,cgl]){c.width=Math.round(W*dpr);c.height=Math.round(H*dpr);}
+  c2d.width=Math.round(W*dpr); c2d.height=Math.round(H*dpr);
+  if(!ow) glS=dpr; sizeGL();
   fit=Math.min(W,H)/1000; focusR=Math.max(120,.36*Math.min(W,H));
   if(!ow){home();focus.x=focus.tx=W/2;focus.y=focus.ty=H/2;}
   else {cam.x+=(W-ow)/2;cam.y+=(H-oh)/2;}
   dirty=true;
 }
+function sizeGL(){cgl.width=Math.round(W*glS);cgl.height=Math.round(H*glS);}
 function home(){cur=ROOT;scale=fit*.92;cam.x=W/2-500*scale;cam.y=H/2-500*scale;dirty=true;}
 
 function zoomAt(px,py,f){
@@ -242,7 +247,7 @@ function drawNode(n,ox,oy,s){
     const b=st.bb, x0=bx+a*b[0]-20, y0=by+a*b[1]-20, x1=bx+a*b[2]+20, y1=by+a*b[3]+20;
     if(x0>W||y0>H||x1<0||y1<0||(x1-x0<44&&y1-y0<44)){stats.culled++;continue;}
     let tolPx=.45;
-    if(dither){
+    if(style>0){
       const dx=Math.max(x0-focus.x,0,focus.x-x1), dy=Math.max(y0-focus.y,0,focus.y-y1);
       tolPx=.45+5*smooth(.6,1.8,Math.hypot(dx,dy)/focusR);
     }
@@ -265,14 +270,14 @@ function drawNode(n,ox,oy,s){
   }
 }
 
-/* ---------- WebGL pass: foveated dither into primaries ---------- */
+/* ---------- WebGL pass: foveated edges (prism sparkle, or dithered blocks) ---------- */
 const FS=`
 #ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
 #else
 precision mediump float;
 #endif
-uniform sampler2D u_tex; uniform vec2 u_res; uniform vec4 u_f[4]; uniform float u_t, u_on, u_dpr;
+uniform sampler2D u_tex, u_glow; uniform vec2 u_res, u_gt; uniform vec4 u_f[4]; uniform float u_t, u_style, u_dpr;
 const vec3 BG=vec3(.039,.039,.047), WH=vec3(.949,.937,.902);
 const vec3 RD=vec3(.89,.149,.176), YL=vec3(.965,.812,.102), BL=vec3(.122,.31,.816);
 float h21(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
@@ -284,14 +289,8 @@ vec3 prim(vec3 c,float pick){
   float dR=distance(c,RD),dY=distance(c,YL),dB=distance(c,BL);
   return dR<dY?(dR<dB?RD:BL):(dY<dB?YL:BL);
 }
-void main(){
-  vec2 fc=gl_FragCoord.xy;
-  vec3 src=texture2D(u_tex,fc/u_res).rgb;
-  if(u_on<.5){gl_FragColor=vec4(src,1.);return;}
-  float sharp=0.;
-  for(int i=0;i<4;i++){vec4 f=u_f[i];if(f.w<=0.)continue;float d=distance(fc,f.xy)/f.z;sharp=max(sharp,f.w*(1.-smoothstep(.55,1.45,d)));}
-  float fall=1.-sharp+(h21(floor(fc/(4.*u_dpr)))-.5)*.09;
-  if(fall<.16){gl_FragColor=vec4(src,1.);return;}
+float disc(float d,float r){return (1.-smoothstep(r*.45,r,d))*(.7+.6*smoothstep(r*.2,r*.9,d));}
+vec3 blocks(vec2 fc,float fall){
   float lv=floor(clamp((fall-.16)/.84,0.,.999)*4.);
   float bs=exp2(lv)*u_dpr;
   vec2 cell=floor(fc/bs), cuv=(cell+.5)*bs/u_res, o=vec2(.25*bs)/u_res;
@@ -308,10 +307,60 @@ void main(){
     bool toPrim=h21(cell+9.7)<smoothstep(.28,.72,fall);
     outc=(toPrim||sat(mx)>.25)?prim(mx,pick):WH;
   }
-  gl_FragColor=vec4(outc,1.);
+  return outc;
+}
+// Prism: lens-like colour split that grows outward, a soft glow haze, and lines that
+// dissolve into twinkling bokeh sparkles with rainbow rims, drifting toward primaries.
+vec3 prismFx(vec2 fc,float fall,vec3 src){
+  vec2 dv=fc-u_f[0].xy; float dl=length(dv); vec2 dir=dl>.5?dv/dl:vec2(1.,0.);
+  float px=u_dpr;
+  float ca=(.3+3.5*fall)*px;
+  vec3 split=vec3(texture2D(u_tex,(fc-dir*ca)/u_res).r, src.g, texture2D(u_tex,(fc+dir*ca)/u_res).b);
+  vec2 uv=fc/u_res, go=u_gt*(1.+1.5*fall);
+  vec3 glow=vec3(0.);
+  for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){vec2 w=vec2(float(x),float(y));glow+=texture2D(u_glow,uv+w*go).rgb*(x==0&&y==0?.2:(x==0||y==0?.125:.075));}
+  glow=max(glow-BG,0.);
+  glow=1.-exp(-glow*(.9+1.3*fall));
+  glow*=.55;
+  float m=smoothstep(.16,.6,fall);
+  vec3 sp=vec3(0.);
+  if(m>0.){
+    float lv=fall<.55?0.:(fall<.8?1.:2.);
+    float bs=(3.5+lv*2.5)*px;
+    vec2 base=floor(fc/bs);
+    float sca=(1.+3.*fall)*px;
+    for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){
+      vec2 c=base+vec2(float(x),float(y));
+      float h1=h21(c+lv*13.1),h2=h21(c*1.37+7.1),h3=h21(c*.71+3.3);
+      vec2 ctr=(c+.5+(vec2(h1,h2)-.5)*.8)*bs;
+      vec3 s=max(texture2D(u_tex,ctr/u_res).rgb,texture2D(u_tex,(ctr+vec2(.3*bs,0.))/u_res).rgb);
+      float ink=max(s.r,max(s.g,s.b))-.08;
+      if(ink<=0.)continue;
+      if(h3>ink*(1.7-.9*fall))continue;
+      float tw=.5+.5*sin(u_t*(1.3+h1*2.6)+h2*6.283);
+      float r=bs*(.3+.5*h2*h2)*(.6+.4*tw)*(h1>.93?2.2:1.);
+      vec2 d=fc-ctr;
+      vec3 k=vec3(disc(length(d-dir*sca),r),disc(length(d),r),disc(length(d+dir*sca),r));
+      vec3 col=mix(s,prim(s,h1),smoothstep(.4,.9,fall)*.65);
+      sp+=k*col*(.55+.75*tw);
+    }
+  }
+  return mix(split,BG+sp,m)+glow*vec3(.85,.92,1.05);
+}
+void main(){
+  vec2 fc=gl_FragCoord.xy;
+  vec3 src=texture2D(u_tex,fc/u_res).rgb;
+  if(u_style<.5){gl_FragColor=vec4(src,1.);return;}
+  float sharp=0.;
+  for(int i=0;i<4;i++){vec4 f=u_f[i];if(f.w<=0.)continue;float d=distance(fc,f.xy)/f.z;sharp=max(sharp,f.w*(1.-smoothstep(.55,1.45,d)));}
+  float fall=1.-sharp+(h21(floor(fc/(4.*u_dpr)))-.5)*.09;
+  if(u_style<1.5){gl_FragColor=vec4(fall<.16?src:blocks(fc,fall),1.);return;}
+  gl_FragColor=vec4(min(prismFx(fc,clamp(fall,0.,1.),src),vec3(1.)),1.);
 }`;
 const VS="attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}";
-let gl=null, U={}, tex=null;
+let gl=null, U={}, tex=null, gtex=null;
+const gMid=document.createElement("canvas"), gSm=document.createElement("canvas");
+const gMidC=gMid.getContext("2d"), gSmC=gSm.getContext("2d");
 function initGL(){
   try{gl=cgl.getContext("webgl",{antialias:false,alpha:false,premultipliedAlpha:false,powerPreference:"high-performance"});}catch(e){gl=null;}
   if(!gl){stage.classList.add("nogl");return;}
@@ -322,12 +371,16 @@ function initGL(){
     gl.useProgram(pr);
     const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
     const loc=gl.getAttribLocation(pr,"p");gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
-    for(const n of["u_tex","u_res","u_f","u_t","u_on","u_dpr"])U[n]=gl.getUniformLocation(pr,n);
+    for(const n of["u_tex","u_glow","u_gt","u_res","u_f","u_t","u_style","u_dpr"])U[n]=gl.getUniformLocation(pr,n);
     tex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,tex);
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
     gl.uniform1i(U.u_tex,0);
+    gtex=gl.createTexture();gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,gtex);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    gl.uniform1i(U.u_glow,1);gl.activeTexture(gl.TEXTURE0);
   }catch(e){console.warn("WebGL off:",e);gl=null;stage.classList.add("nogl");}
 }
 const foci=new Float32Array(16);
@@ -336,20 +389,34 @@ function drawGL(t){
   gl.viewport(0,0,cgl.width,cgl.height);
   gl.uniform2f(U.u_res,cgl.width,cgl.height);
   gl.uniform4fv(U.u_f,foci);
+  gl.uniform2f(U.u_gt,1/Math.max(1,gSm.width),1/Math.max(1,gSm.height));
   gl.uniform1f(U.u_t,reduceMotion?0:t/1000);
-  gl.uniform1f(U.u_on,dither?1:0);
-  gl.uniform1f(U.u_dpr,dpr);
+  gl.uniform1f(U.u_style,style);
+  gl.uniform1f(U.u_dpr,glS);
   gl.drawArrays(gl.TRIANGLES,0,3);
 }
-function upload(){if(gl){gl.bindTexture(gl.TEXTURE_2D,tex);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,c2d);}}
+function upload(){
+  if(!gl) return;
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,tex);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,c2d);
+  if(style===2){
+    const mw=Math.max(1,Math.ceil(W/3)), mh=Math.max(1,Math.ceil(H/3)), sw=Math.max(1,Math.ceil(W/6)), sh=Math.max(1,Math.ceil(H/6));
+    if(gMid.width!==mw||gMid.height!==mh){gMid.width=mw;gMid.height=mh;}
+    if(gSm.width!==sw||gSm.height!==sh){gSm.width=sw;gSm.height=sh;}
+    gMidC.imageSmoothingQuality="high"; gSmC.imageSmoothingQuality="high";
+    gMidC.drawImage(c2d,0,0,mw,mh); gSmC.drawImage(gMid,0,0,sw,sh);
+    gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,gtex);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gSm);
+    gl.activeTexture(gl.TEXTURE0);
+  }
+}
 
 /* ---------- simulated collaborators ---------- */
 const cursorsEl=document.getElementById("cursors");
-const bots=[
+const SIM_COLLAB=false;   // no collaborators yet: solo mode
+const bots=(SIM_COLLAB?[
   {name:"Ana", c:RED, role:"with you"},
   {name:"Kofi",c:YEL, role:"below you"},
   {name:"Mei", c:BLU, role:"around you"},
-].map((b,k)=>{
+]:[]).map((b,k)=>{
   const r=rng(77+k*991);
   const el=document.createElement("div");el.className="cur";el.innerHTML=`<i style="background:${b.c}"></i><span>${b.name}</span>`;cursorsEl.appendChild(el);
   return Object.assign(b,{r,el,node:k===1?ROOT.kid(4,3):ROOT,x:300+r()*400,y:300+r()*400,h:r()*6.28,drawing:false,st:null,timer:r()*1.5,hop:6+r()*6,last:-1e9,sx:-99,sy:-99,vis:false,glow:0});
@@ -397,7 +464,7 @@ function updateBot(b,dt,now){
 const ptrs=new Map(); let drawing=null, panning=false, vel={x:0,y:0}, lastMove=0, hoverAt=-1e9, pinch=null;
 const toCur=(x,y)=>[(x-cam.x)/scale,(y-cam.y)/scale];
 function startStroke(x,y){const [px,py]=toCur(x,y);drawing=makeStroke([px,py],4/scale,ink,"you");drawing.live=true;cur.strokes.push(drawing);dirty=true;}
-function endStroke(){if(!drawing)return;drawing.live=false;drawing.lod=[];drawing=null;dirty=true;normalize();}
+function endStroke(){if(!drawing)return;{const q=drawing.p;lastInk={node:cur,x:q[q.length-2],y:q[q.length-1],t:performance.now()};}drawing.live=false;drawing.lod=[];drawing=null;dirty=true;normalize();}
 stage.addEventListener("pointerdown",e=>{
   stage.setPointerCapture(e.pointerId);
   ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
@@ -449,10 +516,10 @@ const $=id=>document.getElementById(id);
 function setMode(m){mode=m;$("mMove").setAttribute("aria-pressed",m==="move");$("mDraw").setAttribute("aria-pressed",m==="draw");$("sw").classList.toggle("off",m!=="draw");}
 $("mMove").onclick=()=>setMode("move"); $("mDraw").onclick=()=>setMode("draw");
 for(const b of $("sw").querySelectorAll("button")) b.onclick=()=>{ink=b.dataset.c;for(const o of $("sw").querySelectorAll("button"))o.setAttribute("aria-pressed",o===b);setMode("draw");};
-function setDither(on){dither=on;$("bDither").setAttribute("aria-pressed",on);$("focus").hidden=!on;dirty=true;}
-$("bDither").onclick=()=>setDither(!dither);
+function setStyle(v){style=v;if(v===2)dirty=true;const b=$("bDither");b.textContent=STYLES[v];b.setAttribute("aria-pressed",v>0);$("focus").hidden=!v;dirty=true;}
+$("bDither").onclick=()=>setStyle((style+2)%3);
 $("bHome").onclick=home;
-addEventListener("keydown",e=>{if(e.target.tagName==="INPUT")return;const k=e.key.toLowerCase();if(k==="d")setDither(!dither);else if(k==="h")home();else if(k==="m")setMode(mode==="move"?"draw":"move");});
+addEventListener("keydown",e=>{if(e.target.tagName==="INPUT")return;const k=e.key.toLowerCase();if(k==="d")setStyle((style+2)%3);else if(k==="h")home();else if(k==="m")setMode(mode==="move"?"draw":"move");});
 let hintHidden=false; function hideHint(){if(hintHidden)return;hintHidden=true;setTimeout(()=>{$("hint").style.opacity="0";},5000);}
 
 /* ---------- HUD ---------- */
@@ -469,7 +536,7 @@ function hud(now){
 }
 
 /* ---------- main loop ---------- */
-let last=performance.now();
+let last=performance.now(), qT=performance.now();
 function frame(now){
   const dt=Math.min(.05,(now-last)/1000); last=now; fps=fps*.92+.08/Math.max(dt,1e-3);
   // fling
@@ -480,15 +547,18 @@ function frame(now){
   let rate=14;
   if(!engaged){
     let best=null; for(const b of bots) if(b.vis&&b.glow>.3&&(!best||b.last>best.last)) best=b;
-    if(best){focus.tx=best.sx;focus.ty=best.sy;} else {focus.tx=W/2;focus.ty=H/2;}
+    if(best){focus.tx=best.sx;focus.ty=best.sy;}
+    else if(lastInk&&now-lastInk.t<8000){const T=rel(lastInk.node);focus.tx=cam.x+scale*(T.ox+T.s*lastInk.x);focus.ty=cam.y+scale*(T.oy+T.s*lastInk.y);}
+    else {const m=.22*Math.min(W,H),u=reduceMotion?0:now/1000;focus.tx=W/2+m*Math.sin(u*.13);focus.ty=H/2+m*Math.sin(u*.17+1.3);}
     rate=.7;
   }
   const k=1-Math.exp(-dt*rate); focus.x+=(focus.tx-focus.x)*k; focus.y+=(focus.ty-focus.y)*k;
-  if(dither&&Math.hypot(focus.x-focus.lastX,focus.y-focus.lastY)>28) dirty=true;
+  if(style>0&&Math.hypot(focus.x-focus.lastX,focus.y-focus.lastY)>28) dirty=true;
   // shader foci: you (big window) + up to 3 collaborators (small windows)
   foci.fill(0);
-  foci[0]=focus.x*dpr; foci[1]=(H-focus.y)*dpr; foci[2]=focusR*dpr; foci[3]=1;
-  let fi=1; for(const b of bots){ if(fi>3)break; if(!b.vis||b.glow<.02)continue; const o=fi*4; foci[o]=b.sx*dpr; foci[o+1]=(H-b.sy)*dpr; foci[o+2]=Math.max(40,Math.min(.16*Math.min(W,H),b.size*.25))*dpr; foci[o+3]=b.glow; fi++; }
+  foci[0]=focus.x*glS; foci[1]=(H-focus.y)*glS; foci[2]=focusR*glS; foci[3]=1;
+  let fi=1; for(const b of bots){ if(fi>3)break; if(!b.vis||b.glow<.02)continue; const o=fi*4; foci[o]=b.sx*glS; foci[o+1]=(H-b.sy)*glS; foci[o+2]=Math.max(40,Math.min(.16*Math.min(W,H),b.size*.25))*glS; foci[o+3]=b.glow; fi++; }
+  if(now-qT>2500){qT=now;if(fps<40&&glS>1){glS=Math.max(1,glS*.67);sizeGL();}}
   if(dirty){dirty=false;render();upload();}
   drawGL(now);
   $("focus").style.transform=`translate(${focus.x}px,${focus.y}px)`;
