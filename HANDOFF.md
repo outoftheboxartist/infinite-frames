@@ -33,6 +33,7 @@ The main class is a React component (minified name `Nc`). Methods worth knowing,
 | `hydrate(n)` | Turns loaded data into state (`frames` with their `items`, boundaries `B`, chat). |
 | `art(n, r, i)` | Builds the SVG for frame `n`. Prefix `r` is `"ifv-"` for the 2D view and `"L"+f+"-"` for 3D layers. |
 | `sd(d, T0)` | Simplifies a path's points (Ramer–Douglas–Peucker, cached). `T0 = 2.2` is the coarse setting for 3D. **Never use `this.sd` as a variable**: that crashed the app (see below). |
+| `setView(n)` / `cv()` / `applyGv()` / `commitView()` | Pan and zoom. See fix 7: the view moves by CSS transform during a gesture and is redrawn when it ends. |
 | `zoomBy(n)` / `addPull(n)` | Zoom. Once you're fully zoomed out, further zoom-out fills a 0–1 "pull" meter; at 1 it calls `enter3D()`. |
 | `enter3D()` / `exit2D()` | Switch into and out of the 3D box view (tweened `cam` state). |
 | `scene()` | Renders the 3D box: 4 walls (PROFILE, CHAT, EXPLORE, CREATE) plus one layer per frame. |
@@ -67,6 +68,7 @@ Items `yy-f1` … `yy-f5` are `vector` items made by tracing the user's yin-yang
 4. **Each 3D layer is a flat cached image** (`layerImg`) instead of live SVG.
 5. **The real crash:** rotating the 3D view by touch saved the drag start in `this.sd`, overwriting the `sd()` method. The next render threw `this.sd is not a function` and the whole app unmounted. The variable is now `this.orb`. Confirmed: crashed before, fine after.
 6. **On-screen error report:** any uncaught error shows a red box at the bottom of the page. Ask the user for a screenshot of it.
+7. **Smooth pan and zoom in 2D (2026-11-16):** `setView()` no longer sets React state on every finger movement. It stores the wanted view in `this.gv`, and once per screen refresh `applyGv()` moves the already-drawn SVG with a CSS transform. `commitView()` writes the view into state (one sharp redraw) when the finger lifts, after 160 ms of stillness, or when the zoom has drifted more than 3x or below 0.4x from the drawn one. Read the current view with `this.cv()`, not `this.state.view`, in any handler. The SVG has `overflow:visible` so the rest of the canvas is there to pan into. Comment pins (class `ifpin`) hide during the gesture, and the coordinate label updates on release. This also fixed pinch zoom dropping steps.
 
 ## Open requests from the user (not done yet)
 
