@@ -10,6 +10,7 @@ on:
   pull_request:
     paths:
       - app/index.html
+      - app/if-canvas-engine.js
       - app/tests/**
       - lab/nested-engine/**
       - .github/workflows/if-original-spatial.yml

@@ -20,6 +20,18 @@ The separate `engine-v2/` app is a **performance experiment only**, NOT a UI rep
 - `app/sql/guest-test-worlds.sql` — versioned schema and RLS for **public.if_guest_test_worlds**, separate from production artwork tables. This migration was already applied to project `xqfevafhjbdulhcqcmao`.
 - `app/tests/` — spatial/navigation and guest-sandbox regression tests.
 
+## Canvas engine in the original app (`app/if-canvas-engine.js`, added 2026-11-17)
+
+The original app keeps its UI and every feature; only the 2D canvas drawing and camera were swapped for the lab engine's approach.
+
+- `app/if-canvas-engine.js` (readable source) draws the 2D view into a `<canvas>` behind the original `<svg>`, which is now empty and only takes pointer events. It draws windows with clipping, frame items, onion ghosts, drafts, selection and the live stroke. It also draws the F1..Fn strip thumbnails, which used to be five full SVG copies of the world, re-reconciled on every render.
+- The view is owned by the engine: pan/zoom redraw on the next animation frame, and React hears about it about 160 ms after it settles. This cut a React render from ~57 ms to ~5 ms.
+- Zoom cap raised from 256x to 1e8x. New path text keeps decimals matched to the zoom (`window.__ifDigits` in `ls`/`Di`). Brush width and the minimum loop size are now screen-relative. Tap hit-testing uses center-relative paths.
+- Exactly 14 edits in `app/index.html`, each one a single exact string replacement. Every one keeps the old behavior when `window.IFEngine` is missing. Search for `ifEngine` / `IFEngine` / `__ifDigits`.
+- Measured (headless Chromium, phone viewport, 1,814 windows + yin-yang frames): zoom 45 -> 58.6 fps, pan 55 -> 60 fps, zoom-out stalls 24 -> 0, fly-to-deepest 28 fps capped at 256x -> 54 fps reaching 1e8x. Not yet measured on a real phone.
+- Known limits: global 0..1000 coordinates hold ~1e-13 precision, enough to ~1e11x. Traced image contours still write 3 decimals. Live multi-user cursors from the lab are not wired in yet.
+- Tests: `app/tests/canvas-engine.test.mjs`.
+
 ## Nested engine lab (`lab/nested-engine/`, added 2026-11-17)
 
 A standalone, readable-source prototype of the architecture for an infinitely nested, real-time collaborative SVG world. It does **not** modify `app/index.html`, production `if_shared_*` tables, or the guest sandbox; it uses its own `if_lab_*` tables. Start with `lab/nested-engine/ARCHITECTURE.md`.
