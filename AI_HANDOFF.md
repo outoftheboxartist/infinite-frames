@@ -20,6 +20,18 @@ The separate `engine-v2/` app is a **performance experiment only**, NOT a UI rep
 - `app/sql/guest-test-worlds.sql` — versioned schema and RLS for **public.if_guest_test_worlds**, separate from production artwork tables. This migration was already applied to project `xqfevafhjbdulhcqcmao`.
 - `app/tests/` — spatial/navigation and guest-sandbox regression tests.
 
+## Nested engine lab (`lab/nested-engine/`, added 2026-11-17)
+
+A standalone, readable-source prototype of the architecture for an infinitely nested, real-time collaborative SVG world. It does **not** modify `app/index.html`, production `if_shared_*` tables, or the guest sandbox; it uses its own `if_lab_*` tables. Start with `lab/nested-engine/ARCHITECTURE.md`.
+
+- Anchor-relative camera (no global coordinates): tested pixel-exact 80 levels deep (10^-42 scale).
+- Renderer: viewport culling, adaptive level of detail, per-region spatial grid, map-style tile pyramid for dense regions, float64 clipping for shapes far bigger than the screen.
+- Collaboration: optimistic local edits, ~30 Hz coalesced ops, relay with server sequence numbers, per-field last-writer-wins, live cursors/selections/follow, batched Postgres writes (never on the hot path).
+- Dummy world: 100,704 shapes, 45 levels, a 20,000-star region, and the `yin-yang-svg/` frames imported as real paths.
+- `npm test` (14 tests, DB test auto-skips without Postgres) and `npm run bench` (real Chromium; numbers in ARCHITECTURE.md).
+- Demo mode (no server; same world generated in the browser; tabs sync) runs as a static page.
+- Next step for the main app: port `camera.js`, `scene.js`/`sync.js` and `renderer.js` in place of the original viewport/quadtree code, keeping the original UI.
+
 ## Database and tests
 
 Supabase project: `xqfevafhjbdulhcqcmao`.
