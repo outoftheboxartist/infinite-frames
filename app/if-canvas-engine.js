@@ -23,6 +23,10 @@
   const SYNC_MS = 160;        // React hears about view changes this long after they stop
   const MIN_PX = 0.75;        // skip anything smaller than this on screen
   const CLIP_PX = 16;         // smaller than this, clipping can't visibly change it: skip the clip
+  const TILES = true;         // map-style tile cache for settled content
+  const TILE = 256;           // tile side in device pixels
+  const TILE_BUDGET_MS = 6;   // per frame, spent painting tiles
+  const MAX_TILES = 160;      // ~42 MB of tiles at most
 
   // ---------- affine matrices [a,b,c,d,e,f] (canvas order) ----------
   const mul = (m, n) => [
@@ -211,6 +215,7 @@
       this.stats = { ms: 0, shapes: 0, items: 0, frames: 0 };
       this.raf = 0;
       this.syncT = 0;
+      this.tiles = new Map(); this.queue = []; this.queued = new Map(); this.gen = 0; this.sig = null; this.L = null;
       this.hitCtx = document.createElement("canvas").getContext("2d");
       this.ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => this.kick()) : null;
       this.ro && this.ro.observe(canvas);
@@ -218,6 +223,16 @@
       this.kick();
     }
     destroy() { cancelAnimationFrame(this.raf); clearTimeout(this.syncT); this.ro && this.ro.disconnect(); }
+
+    byIdFor(comp) {
+      const B = comp.state.B, D = comp.state.drafts;
+      if (this._byB !== B || this._byD !== D) {
+        const m = new Map();
+        for (const b of comp.allB()) m.set(b.id, b);
+        this._byB = B; this._byD = D; this._byId = m;
+      }
+      return this._byId;
+    }
 
     // React may hand us a new <canvas> element (e.g. after a layout change).
     setCanvas(canvas) {
@@ -380,9 +395,130 @@
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       if (s.mode !== "2d") return;
-      const F = this.scene(ctx, this.viewMatrix(W, H), W, H, dpr, { frame: s.viewing, live: true });
-      this.stats = { ms: performance.now() - t0, shapes: F.shapes, items: F.items, frames: this.stats.frames + 1, z: this.view.z };
-      if (F.animated || moving) this.kick(); // animated GIFs and glides keep drawing
+      const V = this.viewMatrix(W, H);
+      const tiled = TILES && IFEngine.tilesOn !== false && this.drawTiles(ctx, V, W, H, dpr);
+      const F = this.scene(ctx, V, W, H, dpr, { frame: s.viewing, live: true, overlay: tiled });
+      const drawMs = performance.now() - t0;
+      const built = this.buildTiles(TILE_BUDGET_MS);
+      this.stats = { ms: drawMs, shapes: F.shapes, items: F.items, frames: this.stats.frames + 1, z: this.view.z, tiled, tiles: this.tiles.size, built };
+      if (F.animated || moving || this.queue.length) this.kick(); // GIFs, glides and unfinished tiles keep drawing
+      else if (this.view.z < 1.3) this.warmLayers();
+    }
+
+    // Near the whole canvas the 3D box is one pinch away: paint its frame
+    // layers ahead of time, one per idle moment, so the swap has nothing to do.
+    warmLayers() {
+      if (this._warm) return;
+      const idle = root.requestIdleCallback || ((fn) => setTimeout(fn, 60));
+      this._warm = idle(() => {
+        this._warm = 0;
+        const s = this.comp.state;
+        if (s.mode !== "2d" || this.view.z >= 1.3) return;
+        for (let f = 0; f < s.frames.length; f++) {
+          const fr = s.frames[f], hit = this._layers && this._layers.get(fr.items);
+          if (hit && hit.B === s.B && hit.f0 === (f === 0)) continue;
+          if (s.framePreviews && s.framePreviews[fr.n]) continue;
+          this.layer(f);
+          this.warmLayers();
+          return;
+        }
+      });
+    }
+
+    // ---------- map-style tile cache (from lab/nested-engine) ----------
+    // Settled content (windows, published items, onion ghosts) is painted once
+    // into 256 px tiles per zoom level and reused while you pan and zoom. Only
+    // what changes (selection, drafts, the live stroke, GIFs) is drawn live on
+    // top. A tile that isn't ready yet is covered by a stretched piece of a
+    // coarser level; if nothing covers the view yet, the frame is drawn live.
+    contentSig() {
+      const s = this.comp.state, f = s.frames;
+      return [s.B, f, s.viewing, s.onion, s.ghosts, s.tr, ...f.map((x) => x.items)];
+    }
+    drawTiles(ctx, V, W, H, dpr) {
+      const s = this.comp.state, sig = this.contentSig();
+      if (!this.sig || sig.length !== this.sig.length || sig.some((x, i) => x !== this.sig[i])) { this.sig = sig; this.gen++; this.queue = []; }
+      const sc = scaleOf(V) * dpr, want = Math.log2(sc);
+      this.screenDensity = sc;
+      if (this.L == null || want > this.L + 0.35 || want < this.L - 1.1) this.L = Math.ceil(want - 0.35);
+      const L = this.L, k = 2 ** L, w = TILE / k;
+      const iv = inv(V), cs = [tr(iv, 0, 0), tr(iv, W, 0), tr(iv, 0, H), tr(iv, W, H)];
+      const x0 = Math.min(...cs.map((q) => q[0])), x1 = Math.max(...cs.map((q) => q[0])), y0 = Math.min(...cs.map((q) => q[1])), y1 = Math.max(...cs.map((q) => q[1]));
+      const i0 = Math.floor(x0 / w), i1 = Math.floor(x1 / w), j0 = Math.floor(y0 / w), j1 = Math.floor(y1 / w);
+      if ((i1 - i0 + 1) * (j1 - j0 + 1) > 80) return false;
+      const now = performance.now(), plan = [];
+      let covered = true;
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+        const key = s.viewing + "/" + L + "/" + i + "/" + j;
+        const t = this.tiles.get(key);
+        if (!t || t.gen !== this.gen) this.request(key, s.viewing, L, i, j);
+        if (t) { plan.push([t, L, i, j, null]); continue; }
+        // stretch a piece of the nearest finished coarser tile
+        let fb = null;
+        for (let L2 = L - 1; L2 >= L - 8 && !fb; L2--) {
+          const k2 = 2 ** L2, w2 = TILE / k2, t2 = this.tiles.get(s.viewing + "/" + L2 + "/" + Math.floor((i * w + w / 2) / w2) + "/" + Math.floor((j * w + w / 2) / w2));
+          if (t2) fb = [t2, L2];
+        }
+        if (fb) plan.push([fb[0], L, i, j, fb[1]]); else covered = false;
+      }
+      if (!covered) return false;
+      ctx.imageSmoothingEnabled = true;
+      for (const [t, L1, i, j, Lsrc] of plan) {
+        t.used = now;
+        const M = mul(V, [1 / k, 0, 0, 1 / k, i * w - 1 / k, j * w - 1 / k]);
+        ctx.setTransform(dpr * M[0], dpr * M[1], dpr * M[2], dpr * M[3], dpr * M[4], dpr * M[5]);
+        if (Lsrc == null) ctx.drawImage(t.canvas, 0, 0);
+        else {
+          const k2 = 2 ** Lsrc, w2 = TILE / k2, ti = Math.floor(t.i), tj = Math.floor(t.j);
+          const sx = (i * w - ti * w2) * k2 + 1, sy = (j * w - tj * w2) * k2 + 1, sw = TILE * k2 / k;
+          ctx.drawImage(t.canvas, sx, sy, sw, sw, 1, 1, TILE, TILE);
+        }
+      }
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      return true;
+    }
+    request(key, frame, L, i, j) {
+      if (this.queued.has(key) && this.queued.get(key) === this.gen) return;
+      this.queued.set(key, this.gen);
+      this.queue.push({ key, frame, L, i, j, gen: this.gen });
+    }
+    buildTiles(budget) {
+      const t0 = performance.now();
+      let n = 0;
+      while (this.queue.length && performance.now() - t0 < budget) {
+        const q = this.queue.shift();
+        this.queued.delete(q.key);
+        if (q.gen !== this.gen) continue;
+        const c = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(TILE + 2, TILE + 2) : Object.assign(document.createElement("canvas"), { width: TILE + 2, height: TILE + 2 });
+        const ctx = c.getContext("2d"), k = 2 ** q.L, prev = this.F;
+        // tile pixel (1,1) = world (i*w, j*w); computed in float64
+        this.scene(ctx, [k, 0, 0, k, 1 - q.i * TILE, 1 - q.j * TILE], TILE + 2, TILE + 2, 1, { frame: q.frame, tile: true, pxs: k / (this.screenDensity || k) });
+        this.F = prev;
+        this.tiles.set(q.key, { canvas: c, gen: q.gen, i: q.i, j: q.j, L: q.L, used: performance.now() });
+        n++;
+      }
+      if (this.tiles.size > MAX_TILES) {
+        const old = [...this.tiles.entries()].sort((a, b) => a[1].used - b[1].used);
+        for (let k = 0; k < old.length && this.tiles.size > MAX_TILES * 0.85; k++) this.tiles.delete(old[k][0]);
+      }
+      return n;
+    }
+
+    // 3D box layers, painted by the engine instead of a giant SVG per frame
+    layer(f) {
+      const s = this.comp.state, fr = s.frames[f];
+      if (!fr) return "";
+      this._layers || (this._layers = new WeakMap());
+      const hit = this._layers.get(fr.items);
+      if (hit && hit.B === s.B && hit.f0 === (f === 0)) return hit.url;
+      const N = 600, c = document.createElement("canvas");
+      c.width = c.height = N;
+      const prev = this.F;
+      this.scene(c.getContext("2d"), [N / 1e3, 0, 0, N / 1e3, 0, 0], N, N, 1, { frame: f, layer: true });
+      this.F = prev;
+      const url = c.toDataURL("image/png");
+      this._layers.set(fr.items, { B: s.B, f0: f === 0, url });
+      return url;
     }
 
     // Frame-strip thumbnail (replaces a full SVG copy of the world per frame,
@@ -412,21 +548,32 @@
       const iv = inv(V), cs = [tr(iv, 0, 0), tr(iv, W, 0), tr(iv, 0, H), tr(iv, W, H)];
       const rx0 = Math.min(...cs.map((q) => q[0])), ry0 = Math.min(...cs.map((q) => q[1]));
       const rect = { x: rx0, y: ry0, w: Math.max(...cs.map((q) => q[0])) - rx0, h: Math.max(...cs.map((q) => q[1])) - ry0 };
-      const F = { ctx, dpr, V, sc, view, W, H, clipCache: new Map(), animated: false, shapes: 0, items: 0 };
+      // pxs: canvas pixels per screen pixel (tiles are painted at their own
+      // resolution, so outline widths given in screen pixels must scale)
+      const F = { ctx, dpr, V, sc, view, W, H, clipCache: new Map(), animated: false, shapes: 0, items: 0, pxs: o.pxs || 1 };
       this.F = F;
-      const n = o.frame, isCur = n === comp.dIdx(), thumb = !!o.thumb;
-      const drafts = isCur ? s.drafts : [];
-      const bs = thumb ? [...s.B, ...drafts.filter((x) => x.type === "boundary")] : comp.visibleCurves(rect);
-      const byId = new Map();
-      for (const b of comp.allB()) byId.set(b.id, b);
+      const n = o.frame, isCur = n === comp.dIdx(), thumb = !!(o.thumb || o.layer), tile = !!o.tile, overlay = !!o.overlay;
+      const drafts = isCur && !tile && !o.layer ? s.drafts : [];
+      const draftB = drafts.filter((x) => x.type === "boundary");
+      const sel = !thumb && !tile && s.selected ? (s.B.find((b) => b.id === s.selected) || draftB.find((b) => b.id === s.selected)) : null;
+      let bs;
+      if (thumb) bs = [...s.B, ...draftB];
+      else if (tile) bs = comp.indexedVisible(s.B, rect, 0.5 / sc);
+      else if (overlay) bs = draftB;
+      else bs = comp.visibleCurves(rect);
+      const byId = this.byIdFor(comp);
       F.byId = byId;
-      const selOf = (b) => !thumb && s.selected === b.id;
+      const selOf = (b) => !thumb && !tile && s.selected === b.id;
+      // GIFs animate, so they're never baked into tiles
+      const isGif = (p) => p.type === "image" && p.gif;
 
       // 1. windows (dark fill + outline), each clipped to its parent chain
       const px = (b) => shape(b.d).size * sc;
       const shown = bs.filter((b) => selOf(b) || px(b) >= MIN_PX);
+      const layerFills = !o.layer || n === 0;
       for (const b of shown) {
         const sel = selOf(b);
+        if (!layerFills) break;
         this.withClip(px(b) < CLIP_PX ? null : b.clipParent, () => {
           const fill = b.traced ? (b.paintRegion ? b.color : null) : "rgba(5,6,9,.66)";
           this.shapeDraw(b.d, null, { fill, stroke: sel ? "#fff" : b.color, alpha: sel ? 1 : thumb ? 0.35 : 0.55, px: sel ? 3 : 1.4, dash: b.draft ? [8, 6] : null });
@@ -434,15 +581,15 @@
       }
       // 2. onion-skin ghosts, 3. this frame, 4. drafts
       const pixel = 1 / sc;
-      const items = (list, cull) => (cull ? comp.indexedVisible(list, rect, pixel * 0.35) : list).filter((p) => p.type !== "boundary");
-      if (s.onion && !thumb) {
+      const items = (list, cull) => (cull ? comp.indexedVisible(list, rect, pixel * 0.35) : list).filter((p) => p.type !== "boundary" && (tile ? !isGif(p) : overlay ? isGif(p) : true));
+      if (s.onion && !thumb && !overlay) {
         const op = [0.42, 0.2, 0.09];
         for (let w = s.ghosts; w >= 1; w--) { const N = n - w; if (N >= 0 && s.frames[N]) this.drawItems(items(s.frames[N].items || [], true), op[w - 1]); }
       }
       if (s.frames[n]) this.drawItems(items(s.frames[n].items || [], !thumb), 1);
-      if (drafts.length) this.drawItems(items(drafts, false), 1);
-      // 5. outlines on top
-      for (const b of shown) {
+      if (drafts.length) this.drawItems(drafts.filter((p) => p.type !== "boundary"), 1);
+      // 5. outlines on top (overlay mode adds the selected window's highlight)
+      for (const b of overlay && sel && !draftB.includes(sel) ? [...shown, sel] : shown) {
         const sel = selOf(b);
         this.withClip(px(b) < CLIP_PX ? null : b.clipParent, () => {
           this.shapeDraw(b.d, null, sel
@@ -450,7 +597,7 @@
             : { fill: null, stroke: b.color, alpha: 0.45, px: 1.2, dash: b.draft ? [8, 6] : null });
         });
       }
-      if (thumb || !o.live) { ctx.setTransform(1, 0, 0, 1, 0, 0); return F; }
+      if (thumb || tile || !o.live) { ctx.setTransform(1, 0, 0, 1, 0, 0); return F; }
       // 6. placement box of the active draft
       if (s.tool === "adjust" && s.active) {
         const f = drafts.find((x) => x.id === s.active);
@@ -566,11 +713,11 @@
         ctx.strokeStyle = o.stroke;
         // non-scaling outlines are in px; item strokes are in world units
         const scaleToPx = r.screen ? 1 : r.s;
-        let px = o.worldWidth != null ? o.worldWidth * (r.screen ? scaleOf(G ? mul(F.V, G) : F.V) : 1) : o.px / scaleToPx;
+        let px = o.worldWidth != null ? o.worldWidth * (r.screen ? scaleOf(G ? mul(F.V, G) : F.V) : 1) : (o.px * F.pxs) / scaleToPx;
         if (o.worldWidth != null && !r.screen && px * r.s < 0.35) px = 0.35 / r.s;
         ctx.lineWidth = px;
         if (o.round) ctx.lineCap = ctx.lineJoin = "round";
-        if (o.dash) ctx.setLineDash(o.dash.map((x) => x / scaleToPx));
+        if (o.dash) ctx.setLineDash(o.dash.map((x) => (x * F.pxs) / scaleToPx));
         ctx.stroke(r.path);
         if (o.dash) ctx.setLineDash([]);
         if (o.round) ctx.lineCap = ctx.lineJoin = "butt";
