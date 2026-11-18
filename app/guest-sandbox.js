@@ -10,8 +10,13 @@ const write=(key,data)=>root.localStorage.setItem(key,JSON.stringify(data));
 const randomHex=bytes=>{const data=new Uint8Array(bytes);root.crypto.getRandomValues(data);return Array.from(data,x=>x.toString(16).padStart(2,"0")).join("")};
 const validWorld=id=>/^if-test-[a-f0-9]{32}$/.test(id||"");
 const worldFromLink=()=>{try{return new URL(root.location.href).searchParams.get("testWorld")}catch{return null}};
-let world=worldFromLink();if(!validWorld(world))world=read(WORLD_KEY,null);
-if(!validWorld(world))world="if-test-"+randomHex(16);
+/* The plain link opens one shared test world, so everyone tests the same canvas.
+   A ?testWorld=<id> link still opens that specific world. Anyone with the plain
+   link can view and edit the shared world: it holds test artwork only. */
+const SHARED_WORLD="if-test-c61ef7af44b450931aaa31803b99859f";
+let world=worldFromLink();if(!validWorld(world))world=SHARED_WORLD;
+const previous=read(WORLD_KEY,null);
+if(validWorld(previous)&&previous!==world&&previous!==SHARED_WORLD&&!read("if-sandbox-previous-world",null))write("if-sandbox-previous-world",previous);
 write(WORLD_KEY,world);
 const profiles=()=>read(PROFILE_KEY,[]);
 function renameActive(name){const p=active();if(!p)return;const list=profiles(),row=list.find(x=>x.id===p.id);if(row){row.name=String(name||"").trim().slice(0,32)||row.name;write(PROFILE_KEY,list);showStatus(info.message,info.cloud)}}
