@@ -401,7 +401,8 @@
       const drawMs = performance.now() - t0;
       const built = this.buildTiles(TILE_BUDGET_MS);
       this.stats = { ms: drawMs, shapes: F.shapes, items: F.items, frames: this.stats.frames + 1, z: this.view.z, tiled, tiles: this.tiles.size, built };
-      if (F.animated || moving || this.queue.length) this.kick(); // GIFs, glides and unfinished tiles keep drawing
+      // GIFs, glides, unfinished tiles, and freshly built tiles (swap the stretched ones for sharp ones) keep drawing
+      if (F.animated || moving || this.queue.length || built) this.kick();
       else if (this.view.z < 1.3) this.warmLayers();
     }
 
