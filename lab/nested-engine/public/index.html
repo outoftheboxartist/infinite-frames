@@ -1,0 +1,179 @@
+<title>Infinite Frames Nested Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap">
+<style>
+  /* Layout: full-bleed canvas; thin glass HUD pinned to the four edges, nothing in the middle. */
+  :root {
+    color-scheme: dark;
+    --ink: #04050a;          /* world background */
+    --glass: rgba(12, 15, 26, 0.78);
+    --glass-strong: rgba(16, 20, 34, 0.94);
+    --line: rgba(150, 170, 255, 0.16);
+    --text: #e8ebf6;
+    --muted: #8a92ad;
+    --prism: linear-gradient(90deg, #3fd8ff, #a866ff 35%, #ff52b9 65%, #ffb347);
+    --danger: #ff6b7d;
+    --ok: #5ce0a8;
+    --warn: #ffcf5c;
+    --ui: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --r: 12px;
+  }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--ink); color: var(--text); font: 500 13px/1.35 var(--ui);
+    overflow: hidden; overscroll-behavior: none; -webkit-user-select: none; user-select: none;
+  }
+  #stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+  #stage[data-mode="edit"] { cursor: default; }
+  #stage[data-mode="draw"] { cursor: crosshair; }
+  #stage:active { cursor: grabbing; }
+  #stage[data-mode="draw"]:active { cursor: crosshair; }
+
+  .bar {
+    position: fixed; left: 0; right: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    pointer-events: none; z-index: 2;
+  }
+  .bar > * { pointer-events: auto; }
+  .top { top: 0; padding-block: calc(env(safe-area-inset-top, 0px) + 14px) 0; }
+  .bottom { bottom: 0; padding-block: 0 calc(env(safe-area-inset-bottom, 0px) + 14px); align-items: flex-end; }
+
+  .glass { background: var(--glass); border: 1px solid var(--line); border-radius: var(--r); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+
+  .brand { display: flex; align-items: center; gap: 12px; padding: 8px 12px 8px 10px; min-width: 0; }
+  .mark { width: 22px; height: 22px; border-radius: 6px; background: var(--prism); position: relative; flex: none; }
+  .mark::after { content: ""; position: absolute; inset: 5px; border-radius: 3px; background: var(--ink); }
+  .mark::before { content: ""; position: absolute; inset: 9px; border-radius: 1px; background: var(--prism); z-index: 1; }
+  .brand h1 { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 0.01em; white-space: nowrap; }
+  .brand h1 span { color: var(--muted); font-weight: 500; }
+  .status { display: inline-flex; align-items: center; gap: 6px; font: 600 11px var(--mono); color: var(--muted); white-space: nowrap; }
+  .status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .status[data-state="live"]::before { background: var(--ok); box-shadow: 0 0 0 3px rgba(92, 224, 168, 0.18); }
+  .status[data-state="demo"]::before { background: var(--prism); }
+  .status[data-state="offline"]::before, .status[data-state="connecting"]::before { background: var(--warn); }
+
+  .right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .people { display: flex; flex-direction: row-reverse; padding: 5px; gap: 4px; }
+  .person {
+    width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--c); background: var(--ink); color: var(--c);
+    font: 700 11px var(--ui); display: grid; place-items: center; cursor: pointer; padding: 0;
+  }
+  .person.me { background: var(--c); color: var(--ink); }
+  .person.following { box-shadow: 0 0 0 3px var(--ink), 0 0 0 5px var(--c); }
+
+  button { font: inherit; color: inherit; }
+  .icon-btn {
+    height: 40px; min-width: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--glass);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .icon-btn:hover { background: var(--glass-strong); }
+  .icon-btn[aria-pressed="true"] { border-color: rgba(255, 255, 255, 0.5); }
+  .icon-btn svg { width: 16px; height: 16px; }
+
+  .stats { padding: 10px 12px; width: 250px; max-width: calc(100vw - 32px); }
+  .stats h2 { margin: 0 0 6px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .stats dl { margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; font: 12px var(--mono); }
+  .stats dt { color: var(--muted); font-family: var(--ui); }
+  .stats dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+
+  .depthbox { padding: 10px 12px; display: flex; gap: 12px; align-items: flex-end; max-width: 46vw; }
+  .gauge { display: grid; gap: 2px; }
+  .gauge .k { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+  .gauge .v { font: 600 22px/1 var(--mono); font-variant-numeric: tabular-nums; }
+  .gauge .v sup { font-size: 0.55em; vertical-align: 0.8em; }
+  .ladder { display: flex; flex-direction: column-reverse; gap: 3px; max-height: 40vh; overflow: hidden; }
+  .rung { width: 14px; height: 9px; border-radius: 3px; border: 1px solid rgba(255, 255, 255, 0.35); background: var(--c); padding: 0; cursor: pointer; }
+  .rung:last-child { width: 18px; border-color: #fff; }
+  .gap { color: var(--muted); font-size: 10px; text-align: center; width: 14px; line-height: 8px; }
+
+  .dock { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; padding: 6px; max-width: min(760px, calc(100vw - 32px)); position: relative; }
+  .dock::before { content: ""; position: absolute; left: 14px; right: 14px; top: -1px; height: 1px; background: var(--prism); opacity: 0.7; }
+  .dock button { height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid transparent; background: transparent; cursor: pointer; font-weight: 600; white-space: nowrap; }
+  .dock button:hover { background: rgba(255, 255, 255, 0.06); }
+  .seg { display: flex; gap: 2px; padding: 2px; border-radius: 10px; background: rgba(0, 0, 0, 0.35); }
+  .seg button[aria-pressed="true"] { background: var(--text); color: var(--ink); }
+  .acts { display: flex; flex-wrap: wrap; gap: 2px; }
+  .acts button[aria-pressed="true"] { border-color: rgba(255, 255, 255, 0.45); }
+  .swatches { display: flex; gap: 4px; padding: 0 4px; }
+  .swatch { width: 24px !important; height: 24px !important; padding: 0 !important; border-radius: 50% !important; background: var(--c) !important; border: 2px solid rgba(255, 255, 255, 0.2) !important; }
+  .swatch[aria-pressed="true"] { border-color: #fff !important; box-shadow: 0 0 0 2px var(--ink); }
+  .dock .danger { background: var(--danger); color: #1a0508; }
+  .dock .danger-quiet { color: var(--danger); }
+  .confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 4px; max-width: 520px; }
+  .confirm span { color: var(--text); }
+  .hint { color: var(--muted); padding: 0 8px; }
+
+  .toast { position: fixed; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 70px); padding: 9px 14px; z-index: 3; max-width: calc(100vw - 32px); text-align: center; }
+  .rename { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(env(safe-area-inset-top, 0px) + 62px); padding: 10px; display: flex; gap: 6px; z-index: 3; }
+  .rename label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .rename input { height: 34px; border-radius: 8px; border: 1px solid var(--line); background: var(--ink); color: var(--text); padding: 0 10px; font: inherit; width: 160px; }
+  .rename button { height: 34px; border-radius: 8px; border: 0; background: var(--text); color: var(--ink); padding: 0 12px; font-weight: 700; cursor: pointer; }
+
+  :focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  @media (max-width: 560px) {
+    .brand h1 span { display: none; }
+    .depthbox { padding: 8px 10px; }
+    .gauge .v { font-size: 17px; }
+    .icon-btn .label { display: none; }
+    .bottom { flex-direction: column-reverse; align-items: stretch; }
+    .bottom .depthbox { align-self: flex-start; }
+    .dock { max-width: 100%; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<canvas id="stage" aria-label="Nested shape world. Drag to pan, pinch or scroll to zoom." data-mode="explore"></canvas>
+
+<header class="bar top">
+  <div class="brand glass">
+    <div class="mark" aria-hidden="true"></div>
+    <h1>Infinite Frames <span>Nested Lab</span></h1>
+    <span id="status" class="status" data-state="connecting" role="status"><span id="status-text">Connecting</span></span>
+  </div>
+  <div class="right">
+    <div class="row">
+      <div id="people" class="people glass" aria-label="People here"></div>
+    </div>
+    <div class="row">
+      <button id="btn-reset" class="icon-btn" type="button" hidden title="Forget the edits saved in this browser">Reset demo</button>
+      <button id="btn-stats" class="icon-btn" type="button" aria-pressed="false" title="Performance stats">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 13h12M4 10v3M8 6v7M12 3v10"/></svg><span class="label">Stats</span>
+      </button>
+      <button id="btn-home" class="icon-btn" type="button" title="Back to the whole world (H)">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3"/><rect x="6" y="6" width="4" height="4" rx="1"/></svg><span class="label">Whole world</span>
+      </button>
+      <button id="btn-dive" class="icon-btn" type="button" title="Fly to the deepest shape">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="3"/><circle cx="8" cy="8" r="0.8" fill="currentColor"/></svg><span class="label">Dive</span>
+      </button>
+    </div>
+    <section id="stats" class="stats glass" hidden aria-label="Performance">
+      <h2>Performance</h2>
+      <dl></dl>
+    </section>
+  </div>
+</header>
+
+<form id="rename" class="rename glass" hidden>
+  <label for="rename-input">Your name</label>
+  <input id="rename-input" maxlength="24" autocomplete="off">
+  <button type="submit">Save name</button>
+</form>
+
+<footer class="bar bottom">
+  <div class="depthbox glass">
+    <div id="ladder" class="ladder" aria-label="Levels above you"></div>
+    <div class="gauge"><span class="k">Depth</span><span id="depth" class="v">0</span></div>
+    <div class="gauge"><span class="k">Zoom</span><span id="zoom" class="v">1×</span></div>
+  </div>
+  <nav id="dock" class="dock glass" aria-label="Tools"></nav>
+  <div aria-hidden="true" style="width:1px"></div>
+</footer>
+
+<div id="toast" class="toast glass" role="status" hidden></div>
+
+<script type="module" src="src/app.js"></script>
