@@ -33,6 +33,10 @@
   const tr = (m, x, y) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
   const scaleOf = (m) => Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]));
   const T = (x, y) => [1, 0, 0, 1, x, y];
+  const inv = (m) => {
+    const det = m[0] * m[3] - m[1] * m[2], a = m[3] / det, b = -m[1] / det, c = -m[2] / det, d = m[0] / det;
+    return [a, b, c, d, -(a * m[4] + c * m[5]), -(b * m[4] + d * m[5])];
+  };
 
   // SVG item transform used by art(): translate(t.x,t.y) translate(cx,cy) rotate(r) scale(s) translate(-cx,-cy)
   function itemMatrix(f) {
@@ -252,8 +256,98 @@
 
     // world -> CSS-pixel screen matrix (same letterboxing as the old SVG viewBox)
     viewMatrix(W, H) {
-      const v = this.view, sc = Math.min(W, H) * v.z / 1e3;
-      return [sc, 0, 0, sc, W / 2 - sc * v.x, H / 2 - sc * v.y];
+      const v = this.view, sc = Math.min(W, H) * v.z / 1e3, r = v.r || 0;
+      const c = Math.cos(r) * sc, s = Math.sin(r) * sc;
+      return [c, s, -s, c, W / 2 - (c * v.x - s * v.y), H / 2 - (s * v.x + c * v.y)];
+    }
+
+    // ---------- navigation (same feel as lab/nested-engine) ----------
+    // Drag at any zoom, glide after release, pinch/scroll zoom toward the
+    // fingers/cursor, two-finger rotate (eases back upright at whole canvas).
+    // Zooming out past the whole canvas still feeds the 3D "pull" as before.
+    dims() { return [this.canvas.clientWidth || 1, this.canvas.clientHeight || 1]; }
+    local(cx, cy) { const r = this.canvas.getBoundingClientRect(); return [cx - r.left, cy - r.top]; }
+    toWorld(cx, cy) {
+      const [W, H] = this.dims(), p = this.local(cx, cy), q = tr(inv(this.viewMatrix(W, H)), p[0], p[1]);
+      return { x: q[0], y: q[1] };
+    }
+    setV(x, y, z, r) { this.comp.setView({ x, y, z, r }); }
+    panScreen(dx, dy) {
+      const v = this.view, [W, H] = this.dims(), sc = Math.min(W, H) * v.z / 1e3, c = Math.cos(v.r || 0), s = Math.sin(v.r || 0);
+      this.setV(v.x - (c * dx + s * dy) / sc, v.y - (-s * dx + c * dy) / sc, v.z, v.r || 0);
+    }
+    zoomAt(f, sx, sy, dr = 0) {
+      const comp = this.comp, st = comp.state;
+      if (st.mode !== "2d" || !(f > 0)) return;
+      if (f < 1 && this.view.z <= 1.001) { comp.addPull((1 - f) * 4.5); return; }
+      if (f > 1 && st.pull > 0) { comp.setState({ pull: Math.max(0, st.pull - (f - 1) * 1.6) }); return; }
+      const [W, H] = this.dims(), q = tr(inv(this.viewMatrix(W, H)), sx, sy), v = this.view;
+      const z = Math.max(1, Math.min(MAXZ, v.z * f)), r = (v.r || 0) + dr;
+      const sc = Math.min(W, H) * z / 1e3, c = Math.cos(r), s = Math.sin(r), dx = sx - W / 2, dy = sy - H / 2;
+      this.setV(q[0] - (c * dx + s * dy) / sc, q[1] - (-s * dx + c * dy) / sc, z, r);
+    }
+    stop() { this.vel = null; this.zoomQ = 0; this.samples = []; }
+    dragMove(e, drag) {
+      if (!drag.moved) return; // the first move past the 5 px threshold catches up from the start point
+      const lx = drag.lx ?? drag.sx, ly = drag.ly ?? drag.sy, dx = e.clientX - lx, dy = e.clientY - ly;
+      drag.lx = e.clientX; drag.ly = e.clientY;
+      this.panScreen(dx, dy);
+      const t = performance.now();
+      (this.samples || (this.samples = [])).push([t, dx, dy]);
+      while (this.samples.length && t - this.samples[0][0] > 100) this.samples.shift();
+    }
+    pinch(a, b, p) {
+      const A = this.local(a.x, a.y), B = this.local(b.x, b.y);
+      const mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2, d = Math.hypot(A[0] - B[0], A[1] - B[1]), ang = Math.atan2(B[1] - A[1], B[0] - A[0]);
+      this.vel = null;
+      if (p.mx == null) { Object.assign(p, { mx, my, d, ang }); return; }
+      this.panScreen(mx - p.mx, my - p.my);
+      let da = ang - p.ang;
+      if (da > Math.PI) da -= 2 * Math.PI; if (da < -Math.PI) da += 2 * Math.PI;
+      this.zoomAt(d / (p.d || d), mx, my, da);
+      Object.assign(p, { mx, my, d, ang });
+    }
+    release(drag, comp) {
+      const s = this.samples || [];
+      this.samples = [];
+      if (!drag || !drag.moved || comp.pinch || comp.adj || comp.state.live) return;
+      const t = performance.now();
+      if (!s.length || t - s[s.length - 1][0] > 90) return;
+      const span = Math.max(16, t - s[0][0]) / 1000;
+      let dx = 0, dy = 0; for (const q of s) { dx += q[1]; dy += q[2]; }
+      const vx = dx / span, vy = dy / span;
+      if (Math.hypot(vx, vy) > 60) { this.vel = [vx, vy]; this.kick(); }
+    }
+    wheel(e) {
+      const p = this.local(e.clientX, e.clientY);
+      this.vel = null;
+      this.zoomQ = (this.zoomQ || 0) - Math.max(-60, Math.min(60, e.deltaY)) * 0.0022 * (e.ctrlKey ? 2.5 : 1);
+      this.zf = p;
+      this.kick();
+    }
+    // per-frame motion: glide, smoothed wheel zoom, ease rotation upright at whole canvas
+    tick() {
+      const now = performance.now(), dt = Math.min(0.05, (now - (this.lastTick || now)) / 1000);
+      this.lastTick = now;
+      let moving = false;
+      if (this.vel && !this.comp.ptrs.size) {
+        this.panScreen(this.vel[0] * dt, this.vel[1] * dt);
+        const k = Math.exp(-dt * 5); this.vel[0] *= k; this.vel[1] *= k;
+        if (Math.hypot(this.vel[0], this.vel[1]) < 10) this.vel = null; else moving = true;
+      }
+      if (Math.abs(this.zoomQ || 0) > 1e-4) {
+        const step = this.zoomQ * (1 - Math.exp(-dt * 16));
+        this.zoomQ -= step;
+        this.zoomAt(Math.exp(step), this.zf[0], this.zf[1]);
+        moving = true;
+      } else this.zoomQ = 0;
+      const r = this.view.r || 0;
+      if (r && this.view.z <= 1.001 && this.comp.ptrs.size < 2) {
+        const nr = Math.abs(r) < 0.002 ? 0 : r * Math.exp(-dt * 6);
+        this.setV(this.view.x, this.view.y, this.view.z, nr);
+        moving = moving || nr !== 0;
+      }
+      return moving;
     }
 
     hit(b, p) {
@@ -276,6 +370,7 @@
     }
 
     draw() {
+      const moving = this.tick();
       const t0 = performance.now();
       const comp = this.comp, s = comp.state, canvas = this.canvas, ctx = this.ctx;
       if (s.view !== this.view && this.ours.has(s.view)) s.view = this.view;
@@ -287,7 +382,7 @@
       if (s.mode !== "2d") return;
       const F = this.scene(ctx, this.viewMatrix(W, H), W, H, dpr, { frame: s.viewing, live: true });
       this.stats = { ms: performance.now() - t0, shapes: F.shapes, items: F.items, frames: this.stats.frames + 1, z: this.view.z };
-      if (F.animated) this.kick(); // animated GIFs keep drawing
+      if (F.animated || moving) this.kick(); // animated GIFs and glides keep drawing
     }
 
     // Frame-strip thumbnail (replaces a full SVG copy of the world per frame,
@@ -312,9 +407,11 @@
 
     // Draws one frame of the world into ctx (mirrors the old art() SVG).
     scene(ctx, V, W, H, dpr, o) {
-      const comp = this.comp, s = comp.state, sc = V[0];
+      const comp = this.comp, s = comp.state, sc = scaleOf(V);
       const view = [-4, -4, W + 4, H + 4];
-      const rect = { x: (0 - V[4]) / sc, y: (0 - V[5]) / sc, w: W / sc, h: H / sc };
+      const iv = inv(V), cs = [tr(iv, 0, 0), tr(iv, W, 0), tr(iv, 0, H), tr(iv, W, H)];
+      const rx0 = Math.min(...cs.map((q) => q[0])), ry0 = Math.min(...cs.map((q) => q[1]));
+      const rect = { x: rx0, y: ry0, w: Math.max(...cs.map((q) => q[0])) - rx0, h: Math.max(...cs.map((q) => q[1])) - ry0 };
       const F = { ctx, dpr, V, sc, view, W, H, clipCache: new Map(), animated: false, shapes: 0, items: 0 };
       this.F = F;
       const n = o.frame, isCur = n === comp.dIdx(), thumb = !!o.thumb;
@@ -506,7 +603,103 @@
   // current zoom (it used to be fixed at 1, which collapsed deep drawings).
   function setDigits(z) { root.__ifDigits = Math.max(1, Math.min(12, Math.ceil(Math.log10(Math.max(1, z))) + 2)); }
 
+  // ---------- image trace: geometry from the image ----------
+  // labels: per-pixel colour cluster (or -1 for transparent/background).
+  // Every connected patch of one colour is a shape (holes included). The
+  // smallest shapes merge into the neighbour they share the longest edge with
+  // until at most `maxShapes` remain, so the artwork and the selectable curves
+  // are the same list. Isolated specks smaller than minPx are dropped.
+  function shapeTrace(labels, W, H, minPx, maxShapes) {
+    const N = W * H, comp = new Int32Array(N).fill(-1), stack = new Int32Array(N), regs = [];
+    for (let p = 0; p < N; p++) {
+      if (labels[p] < 0 || comp[p] >= 0) continue;
+      const id = regs.length, lab = labels[p];
+      let sp = 0, area = 0, edge = 0, x0 = W, y0 = H, x1 = 0, y1 = 0;
+      stack[sp++] = p; comp[p] = id;
+      while (sp) {
+        const q = stack[--sp], x = q % W, y = (q / W) | 0;
+        area++; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+        if (x === 0 || x === W - 1 || y === 0 || y === H - 1 || labels[q - 1] !== lab || labels[q + 1] !== lab || labels[q - W] !== lab || labels[q + W] !== lab) edge++;
+        if (x > 0 && comp[q - 1] < 0 && labels[q - 1] === lab) { comp[q - 1] = id; stack[sp++] = q - 1; }
+        if (x < W - 1 && comp[q + 1] < 0 && labels[q + 1] === lab) { comp[q + 1] = id; stack[sp++] = q + 1; }
+        if (y > 0 && comp[q - W] < 0 && labels[q - W] === lab) { comp[q - W] = id; stack[sp++] = q - W; }
+        if (y < H - 1 && comp[q + W] < 0 && labels[q + W] === lab) { comp[q + W] = id; stack[sp++] = q + W; }
+      }
+      regs.push({ label: lab, area, edge, x0, y0, x1, y1 });
+    }
+    const adj = regs.map(() => new Map());
+    const link = (a, b) => { adj[a].set(b, (adj[a].get(b) || 0) + 1); adj[b].set(a, (adj[b].get(a) || 0) + 1); };
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const p = y * W + x, a = comp[p];
+      if (a < 0) continue;
+      if (x < W - 1) { const b = comp[p + 1]; if (b >= 0 && b !== a) link(a, b); }
+      if (y < H - 1) { const b = comp[p + W]; if (b >= 0 && b !== a) link(a, b); }
+    }
+    const parent = new Int32Array(regs.length).map((_, i) => i);
+    // binary min-heap of [area, id]
+    const heap = [];
+    const push = (e) => { heap.push(e); let i = heap.length - 1; while (i) { const j = (i - 1) >> 1; if (heap[j][0] <= heap[i][0]) break; [heap[i], heap[j]] = [heap[j], heap[i]]; i = j; } };
+    const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[i], heap[m]] = [heap[m], heap[i]]; i = m; } } return top; };
+    let alive = regs.length;
+    // merge region id into the neighbour it shares the longest edge with
+    const merge = (id) => {
+      const R = regs[id];
+      let best = -1, bl = 0;
+      for (const [n, l] of adj[id]) if (l > bl || (l === bl && regs[n].area > regs[best].area)) { bl = l; best = n; }
+      R.dead = true; alive--;
+      if (best < 0) { R.dropped = true; return -1; }
+      const B = regs[best];
+      B.area += R.area; B.edge += R.edge;
+      B.x0 = Math.min(B.x0, R.x0); B.y0 = Math.min(B.y0, R.y0); B.x1 = Math.max(B.x1, R.x1); B.y1 = Math.max(B.y1, R.y1);
+      parent[id] = best;
+      for (const [n, l] of adj[id]) {
+        if (n === best) continue;
+        adj[best].set(n, (adj[best].get(n) || 0) + l);
+        const an = adj[n]; an.delete(id); an.set(best, (an.get(best) || 0) + l);
+      }
+      adj[best].delete(id); adj[id] = null;
+      return best;
+    };
+    // 1. anti-aliasing fringes: patches ~1 px thick hugging a real shape's edge
+    //    (area / edge pixels < 1.6, under 1% of the image) fold into the shape they hug
+    regs.map((r, i) => i).sort((a, b) => regs[a].area - regs[b].area).forEach((i) => {
+      const R = regs[i];
+      if (!R.dead && R.area < N * 0.01 && R.area / Math.max(1, R.edge) < 1.6 && adj[i].size) merge(i);
+    });
+    // 2. smallest first until at most maxShapes remain and none is a speck
+    regs.forEach((r, i) => { if (!r.dead) push([r.area, i]); });
+    const target = Math.max(1, maxShapes | 0);
+    while (heap.length) {
+      const [area, id] = pop(), R = regs[id];
+      if (R.dead || R.area !== area) continue;
+      if (alive <= target && area >= minPx) break;
+      const best = merge(id);
+      if (best >= 0) push([regs[best].area, best]);
+    }
+    const find = (i) => { let r = i; while (parent[r] !== r) r = parent[r]; while (parent[i] !== r) { const n = parent[i]; parent[i] = r; i = n; } return r; };
+    const out = [], index = new Int32Array(regs.length).fill(-1);
+    regs.forEach((r, i) => { if (!r.dead) { index[i] = out.length; out.push({ id: out.length, label: r.label, area: r.area, x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 }); } });
+    const ids = new Int32Array(N).fill(-1);
+    for (let p = 0; p < N; p++) { const c = comp[p]; if (c < 0) continue; const r = find(c); ids[p] = regs[r].dropped ? -1 : index[r]; }
+    out.sort((a, b) => b.area - a.area);
+    return { ids, regions: out };
+  }
+
+  // ---------- trace detail rules (engagement) ----------
+  // How many shapes a person may cut an image into. Change the numbers here.
+  const TRACE_RULES = { base: 40, perPiece: 20, perPoints: 10, pointsStep: 10, cap: 600, owner: 2000 };
+  function traceLimit({ owner = false, published = 0, points = 0 } = {}) {
+    const R = TRACE_RULES;
+    if (owner) return { limit: R.owner, owner: true, published, points, text: "Owner: up to " + R.owner + " shapes" };
+    const limit = Math.min(R.cap, R.base + R.perPiece * published + R.perPoints * Math.floor(points / R.pointsStep));
+    const more = limit >= R.cap ? "Maximum detail unlocked" : "+" + R.perPiece + " per published piece, +" + R.perPoints + " per " + R.pointsStep + " points";
+    return { limit, owner: false, published, points, text: "Your limit: " + limit + " shapes (" + published + " published, " + points + " pts). " + more };
+  }
+
   IFEngine.MAXZ = MAXZ;
-  IFEngine._internal = { parse, shape, itemMatrix, mul, tr, screenPath, clipRect, setDigits };
+  IFEngine.shapeTrace = shapeTrace;
+  IFEngine.traceLimit = traceLimit;
+  IFEngine.TRACE_RULES = TRACE_RULES;
+  IFEngine._internal = { parse, shape, itemMatrix, mul, tr, inv, screenPath, clipRect, setDigits };
   root.IFEngine = IFEngine;
 })(typeof window !== "undefined" ? window : globalThis);

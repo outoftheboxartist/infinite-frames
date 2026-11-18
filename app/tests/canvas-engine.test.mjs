@@ -84,3 +84,94 @@ test("saved path precision follows the zoom", () => {
   setDigits(256); assert.equal(sandbox.__ifDigits, 5);
   setDigits(1e8); assert.equal(sandbox.__ifDigits, 10);
 });
+
+// ---- navigation + image trace (2026-11-18) ----
+const { inv } = IFEngine._internal;
+
+test("rotated view: screen <-> world round-trip is exact", () => {
+  const V = IFEngine.prototype.viewMatrix.call({ view: { x: 512.25, y: 491.5, z: 3e5, r: 0.7 } }, 390, 400);
+  const p = tr(V, 512.2501, 491.4999), q = tr(inv(V), p[0], p[1]);
+  close(q[0], 512.2501, 1e-9); close(q[1], 491.4999, 1e-9);
+  const c = tr(V, 512.25, 491.5); close(c[0], 195, 1e-6); close(c[1], 200, 1e-6);
+});
+
+function grid(rows) { // rows of characters -> labels (. = transparent)
+  const H = rows.length, W = rows[0].length, L = new Int16Array(W * H);
+  rows.forEach((r, y) => [...r].forEach((ch, x) => { L[y * W + x] = ch === "." ? -1 : ch.charCodeAt(0) - 97; }));
+  return { L, W, H };
+}
+
+test("trace: every connected patch of one colour is its own shape, holes stay inside it", () => {
+  const { L, W, H } = grid([
+    "aaaaaaaa",
+    "abbbbbba",
+    "ab....ba",
+    "ab....ba",
+    "abbbbbba",
+    "aaaaaaaa",
+    "cc....cc",
+  ]);
+  const r = IFEngine.shapeTrace(L, W, H, 1, 100);
+  // shapes: outer a-ring, inner b-ring, and two separate c patches
+  assert.equal(r.regions.length, 4);
+  const ringA = r.regions.find((x) => x.label === 0), ringB = r.regions.find((x) => x.label === 1);
+  assert.equal(ringA.area, 24); assert.equal(ringB.area, 16);
+  assert.equal(r.ids[2 * W + 3], -1, "the transparent hole is not part of any shape");
+  assert.equal(r.regions.filter((x) => x.label === 2).length, 2, "same colour, not touching = two shapes");
+});
+
+test("trace: detail setting is exact; smallest shapes merge into the neighbour they touch most", () => {
+  const { L, W, H } = grid([
+    "aaaaaaaaaa",
+    "aabaaacaaa",
+    "aaaaaaaaaa",
+    "dddddddddd",
+    "ddeedddddd",
+  ]);
+  const all = IFEngine.shapeTrace(L, W, H, 1, 100);
+  assert.equal(all.regions.length, 5);
+  const three = IFEngine.shapeTrace(L, W, H, 1, 3);
+  assert.equal(three.regions.length, 3, "asked for 3 shapes, got 3");
+  assert.equal(three.ids[1 * W + 2], three.ids[0], "speck b merged into a (its only neighbour)");
+  const two = IFEngine.shapeTrace(L, W, H, 1, 2);
+  assert.deepEqual(plain(two.regions.map((r) => r.label).sort()), [0, 3]);
+  for (const v of two.ids) assert.ok(v >= 0, "merging never leaves holes in the picture");
+});
+
+test("trace: isolated specks below the speck size are dropped", () => {
+  const { L, W, H } = grid(["aaaa....", "aaaa..b.", "aaaa...."]);
+  const r = IFEngine.shapeTrace(L, W, H, 2, 100);
+  assert.equal(r.regions.length, 1);
+  assert.equal(r.ids[1 * W + 6], -1);
+});
+
+test("trace detail rules: base for everyone, earned by pieces and points, owner unlimited", () => {
+  const R = IFEngine.TRACE_RULES;
+  assert.equal(IFEngine.traceLimit({}).limit, R.base);
+  assert.equal(IFEngine.traceLimit({ published: 2, points: 25 }).limit, R.base + 2 * R.perPiece + 2 * R.perPoints);
+  assert.equal(IFEngine.traceLimit({ published: 999 }).limit, R.cap);
+  assert.equal(IFEngine.traceLimit({ owner: true }).limit, R.owner);
+  assert.match(IFEngine.traceLimit({ published: 1 }).text, /per published piece/);
+});
+
+test("app wiring: lab navigation and shape tracing", () => {
+  assert.match(html, /if\(this\.ifEngine\)\{this\.ifEngine\.pinch\(l,o,this\.pinch\);return\}/);
+  assert.match(html, /if\(r\.moved&&this\.ifEngine\)\{this\.ifEngine\.dragMove\(n,r\);return\}/);
+  assert.match(html, /this\.ifEngine\.release\(this\.drag,this\)/);
+  assert.match(html, /if\(this\.ifEngine&&this\.state\.mode==="2d"\)\{this\.ifEngine\.wheel\(n\);return\}/);
+  assert.match(html, /world\(n\)\{if\(this\.ifEngine\)return this\.ifEngine\.toWorld/);
+  assert.match(html, /if\(i\.shapes&&window\.IFEngine\)\{const sh=IFEngine\.shapeTrace/);
+  assert.match(html, /const keep=v\.shapes\?out:out\.slice\(0,200\)/);
+  assert.match(html, /S\("maxRegions","Shapes",4,e\.limit\?e\.limit\.limit:200/);
+  // every import path is still there
+  for (const k of ["onFile", "addImage", "openTrace", "traceActive", "traceTapped", "makeTraceDraft", "tsApply", "IFInPageCamera", 'accept:"image/gif"']) assert.ok(html.includes(k), k);
+});
+
+test("trace: thin anti-aliasing fringes fold into the shape they hug", () => {
+  // 60x60 solid square (label 0) with a 1-px fringe (label 1) along its right edge, on transparent
+  const W = 200, H = 200, L = new Int16Array(W * H).fill(-1);
+  for (let y = 5; y < 65; y++) { for (let x = 5; x < 65; x++) L[y * W + x] = 0; L[y * W + 65] = 1; }
+  const r = IFEngine.shapeTrace(L, W, H, 1, 100);
+  assert.equal(r.regions.length, 1, "fringe merged");
+  assert.equal(r.regions[0].area, 60 * 60 + 60);
+});

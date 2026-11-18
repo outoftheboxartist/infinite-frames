@@ -31,6 +31,11 @@ The original app keeps its UI and every feature; only the 2D canvas drawing and 
 - Measured (headless Chromium, phone viewport, 1,814 windows + yin-yang frames): zoom 45 -> 58.6 fps, pan 55 -> 60 fps, zoom-out stalls 24 -> 0, fly-to-deepest 28 fps capped at 256x -> 54 fps reaching 1e8x. Not yet measured on a real phone.
 - Known limits: global 0..1000 coordinates hold ~1e-13 precision, enough to ~1e11x. Traced image contours still write 3 decimals. Live multi-user cursors from the lab are not wired in yet.
 - Tests: `app/tests/canvas-engine.test.mjs`.
+- **2026-11-18 update:**
+  - **Navigation** matches the lab: drag at any zoom, glide after release, pinch/scroll zoom toward the fingers/cursor, two-finger rotate (eases upright at whole canvas). Zooming out past the whole canvas still opens 3D. The view gains an optional `r` (rotation).
+  - **Image trace is now "geometry from the image"** (`IFEngine.shapeTrace`): every connected patch of one colour is a shape, holes stay holes. Anti-aliasing fringes fold into the shape they hug, and the smallest shapes merge into their neighbours until the Shapes setting is met. The traced artwork and the selectable curves are the same list (N shapes = N curves). All import options (upload, photo, GIF, trace dialog, colours, detail, smoothing, clean-up, black & white, remove background) are unchanged.
+  - **Detail limits** (`IFEngine.TRACE_RULES` in `app/if-canvas-engine.js`): 40 shapes for everyone, +20 per published piece, +10 per 10 points, capped at 600; the owner gets 2000.
+- **Live test build:** https://infinite-frames-engine.vercel.app (separate Vercel project `infinite-frames-engine`, deployed from this branch with root directory `app`).
 
 ## Nested engine lab (`lab/nested-engine/`, added 2026-11-17)
 
