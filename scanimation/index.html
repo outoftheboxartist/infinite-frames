@@ -1,0 +1,290 @@
+<title>Butterfly Lightbox</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Archivo:wght@700;800&display=swap">
+<style>
+/* Layout: a lit box on a dark workbench (preview left), settings and print files right, build steps below. One committed dark look. */
+:root{
+  --bench:#0f1012; --panel:#17191d; --line:#2a2d33; --ink:#ece9e2; --ink2:#a7a49c; --ink3:#6f6d68;
+  --lamp:#ffb547; --lamp-ink:#1b1306; --ok:#8fd19e; --warn:#ff8f7a;
+  --f-display:'Archivo','IBM Plex Sans',system-ui,sans-serif;
+  --f-body:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --f-mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{background:var(--bench);color:var(--ink)}
+body{font:15px/1.5 var(--f-body);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+header h1{font:800 clamp(28px,5vw,44px)/1.05 var(--f-display);letter-spacing:-.01em;margin:0;text-wrap:balance}
+header p{margin:8px 0 0;color:var(--ink2);max-width:62ch}
+.grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:24px;align-items:start}
+@media (max-width:860px){.grid{grid-template-columns:minmax(0,1fr)}}
+.stage{position:sticky;top:12px;display:flex;flex-direction:column;gap:12px}
+@media (max-width:860px){.stage{position:static}}
+.scene{perspective:1100px;display:grid;place-items:center;padding:22px 8px;background:radial-gradient(60% 60% at 50% 40%,#1b1d22,var(--bench));border-radius:14px;border:1px solid var(--line);touch-action:pan-y;cursor:ew-resize;user-select:none}
+.box{position:relative;transform-style:preserve-3d;transition:transform .08s linear;border-radius:6px;padding:var(--bez,18px);background:linear-gradient(145deg,#3a3b3f,#1d1e21 60%,#121315);box-shadow:0 30px 60px rgba(0,0,0,.6),inset 0 0 0 1px rgba(255,255,255,.07)}
+.box canvas{display:block;border-radius:2px;box-shadow:inset 0 0 18px #000;max-width:100%}
+.readout{display:flex;flex-wrap:wrap;gap:8px 16px;font:500 12px var(--f-mono);color:var(--ink2)}
+.readout b{color:var(--ink);font-weight:500}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.panel h2{font:700 13px var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink2);margin:0}
+.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:420px){.fields{grid-template-columns:minmax(0,1fr)}}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--ink2)}
+label.f small{color:var(--ink3);font-size:11.5px;line-height:1.35}
+input[type=number],select{width:100%;min-width:0;background:var(--bench);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:500 14px var(--f-mono)}
+input[type=range]{width:100%;accent-color:var(--lamp)}
+input[type=color]{width:40px;height:32px;border:1px solid var(--line);border-radius:8px;background:var(--bench);padding:2px}
+input:focus-visible,select:focus-visible,button:focus-visible,.scene:focus-visible{outline:2px solid var(--lamp);outline-offset:2px}
+.seg{display:flex;gap:4px;background:var(--bench);border:1px solid var(--line);border-radius:10px;padding:3px}
+.seg button{flex:1;border:0;background:none;color:var(--ink2);padding:7px 8px;border-radius:7px;font:500 13px var(--f-body);cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--bench)}
+.btn{border:1px solid var(--line);background:var(--bench);color:var(--ink);border-radius:10px;padding:10px 14px;font:600 14px var(--f-body);cursor:pointer;display:inline-flex;gap:8px;align-items:center;justify-content:center}
+.btn:hover{border-color:var(--ink3)}
+.btn.lamp{background:var(--lamp);color:var(--lamp-ink);border-color:var(--lamp)}
+.btn[disabled]{opacity:.45;cursor:default}
+.dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+@media (max-width:420px){.dl{grid-template-columns:minmax(0,1fr)}}
+.note{font-size:12.5px;color:var(--ink2)}
+.note.warn{color:var(--warn)}
+.status{font:500 12px var(--f-mono);color:var(--ink2);min-height:1.4em}
+.steps{counter-reset:s;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;padding:0;margin:0;list-style:none}
+@media (max-width:760px){.steps{grid-template-columns:minmax(0,1fr)}}
+.steps li{counter-increment:s;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0}
+.steps li h3{margin:0 0 6px;font:700 16px/1.25 var(--f-display);display:flex;gap:10px;align-items:baseline}
+.steps li h3::before{content:counter(s);font:500 12px var(--f-mono);color:var(--lamp-ink);background:var(--lamp);border-radius:99px;min-width:22px;height:22px;display:inline-grid;place-items:center}
+.steps li p,.steps li ul{margin:4px 0 0;color:var(--ink2);font-size:14px;max-width:62ch}
+.steps li ul{padding-left:18px}
+.steps b{color:var(--ink);font-weight:600}
+h2.sec{font:800 24px/1.1 var(--f-display);margin:0}
+.mono{font-family:var(--f-mono)}
+.thumbs{display:flex;gap:6px;flex-wrap:wrap}
+.thumbs canvas{width:44px;height:44px;border-radius:6px;border:1px solid var(--line);background:#000}
+@media (prefers-reduced-motion:reduce){.box{transition:none}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Butterfly Lightbox</h1>
+    <p>A scanimation for a real shadow box. The striped picture sits at the back of the box, a clear film printed with black slits sits at the front, and the gap between them makes the butterfly flap as you tilt the box or walk past it. Set your box size here, check the motion in the preview, then download the two layers at exact print size.</p>
+  </header>
+
+  <div class="grid">
+    <section class="stage" aria-label="Preview">
+      <div class="scene" id="scene" tabindex="0" role="slider" aria-label="Viewing angle. Drag or use the arrow keys to tilt the box." aria-valuemin="-30" aria-valuemax="30" aria-valuenow="0">
+        <div class="box" id="box"><canvas id="pv" width="300" height="420"></canvas></div>
+      </div>
+      <div class="row">
+        <label class="f" style="flex:1;min-width:200px">Viewing angle <span class="mono" id="angOut">0°</span>
+          <input type="range" id="ang" min="-30" max="30" step="0.1" value="0"></label>
+        <label class="row note" style="gap:6px"><input type="checkbox" id="rock" checked> Rock the box</label>
+      </div>
+      <div class="readout" id="readout"></div>
+      <p class="note">The preview shows the frame your eye would see through the slits at that angle, with the barrier's darkening. Drag across the box to tilt it.</p>
+    </section>
+
+    <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+      <section class="panel" aria-labelledby="h-box">
+        <h2 id="h-box">Your box</h2>
+        <div class="row"><span class="note">Units</span>
+          <div class="seg" id="unitSeg" style="flex:1"><button type="button" data-u="in" aria-pressed="true">inches</button><button type="button" data-u="mm" aria-pressed="false">mm</button></div></div>
+        <div class="fields">
+          <label class="f">Window width <input type="number" id="winW" step="0.05" min="0.5"><small>Inside the frame, the part you can see.</small></label>
+          <label class="f">Window height <input type="number" id="winH" step="0.05" min="0.5"><small>Taller than wide is fine.</small></label>
+          <label class="f">Recess (gap) <input type="number" id="gap" step="0.01" min="0.02"><small>Space between the back picture and the front film.</small></label>
+          <label class="f">Overlap <input type="number" id="ov" step="0.05" min="0"><small>Extra print hidden under the frame on every side.</small></label>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="h-slit">
+        <h2 id="h-slit">Slits and motion</h2>
+        <div class="fields">
+          <label class="f">Frames <input type="number" id="N" min="2" max="12" step="1"><small>Butterfly poses per loop. More is smoother, darker.</small></label>
+          <label class="f">Slits per inch <input type="number" id="lpi" min="2" max="40" step="0.5"><small>8–15 suits most inkjets on film.</small></label>
+          <label class="f">Viewing distance <input type="number" id="vd" step="0.5" min="2"><small>How far away people usually stand.</small></label>
+          <label class="f">Print resolution (dpi) <select id="dpi"><option>200</option><option selected>300</option><option>600</option></select><small>Match your printer setting.</small></label>
+        </div>
+        <div class="row"><span class="note">Slits run</span>
+          <div class="seg" id="dirSeg" style="flex:1"><button type="button" data-d="v" aria-pressed="true">up and down (tilt sideways)</button><button type="button" data-d="h" aria-pressed="false">sideways (tilt up/down)</button></div></div>
+        <label class="row note" style="gap:6px"><input type="checkbox" id="rev"> Reverse the motion direction</label>
+      </section>
+
+      <section class="panel" aria-labelledby="h-art">
+        <h2 id="h-art">Picture</h2>
+        <div class="seg" id="artSeg"><button type="button" data-a="fly" aria-pressed="true">Butterfly</button><button type="button" data-a="own" aria-pressed="false">My own frames</button></div>
+        <div id="flyOpts" class="fields">
+          <label class="f">Background centre <input type="color" id="c0" value="#3f9be0"></label>
+          <label class="f">Background edge <input type="color" id="c1" value="#0e3160"></label>
+          <label class="f">Butterfly size <input type="range" id="bsz" min="0.4" max="1" step="0.01" value="0.86"></label>
+          <label class="f">Backdrop photo (optional) <input type="file" id="bdFile" accept="image/*"><small id="bdName">Replaces the colour background.</small></label>
+        </div>
+        <div id="ownOpts" hidden>
+          <label class="f">Frame images, in order <input type="file" id="frFiles" accept="image/*" multiple><small>Pick 2–12 images; each is one pose of the loop. They're cropped to fill the window.</small></label>
+          <div class="thumbs" id="thumbs"></div>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="h-print">
+        <h2 id="h-print">Print files</h2>
+        <div class="dl">
+          <button class="btn lamp" type="button" id="dlBack">Back layer (picture)</button>
+          <button class="btn lamp" type="button" id="dlFront">Front layer (slits)</button>
+          <button class="btn" type="button" id="dlTestB">Test patch, back</button>
+          <button class="btn" type="button" id="dlTestF">Test patch, front</button>
+        </div>
+        <div class="status" id="status" role="status"></div>
+        <p class="note">Print both at <b>100% / actual size</b>, never "fit to page". Each file has a 1-inch ruler in the margin so you can check the scale with a ruler before you cut. The test patches are 2 × 2 in versions with the same settings: print those first.</p>
+        <p class="note warn" id="noDl" hidden>Downloads only work when this page is opened on claude.ai.</p>
+      </section>
+    </div>
+  </div>
+
+  <section style="display:flex;flex-direction:column;gap:14px" aria-labelledby="h-build">
+    <h2 class="sec" id="h-build">Build it, step by step</h2>
+    <ol class="steps">
+      <li><h3>Measure the box</h3><p>Measure the <b>window opening</b> inside the frame (width and height), then the <b>depth</b> available behind the front. Enter the opening as the window size. Choose a recess smaller than the depth so there's room for a light behind the picture.</p></li>
+      <li><h3>Pick the recess</h3><p>The recess sets how far you tilt for each pose: the readout above shows <b>degrees per frame</b>. About 3–6° per frame feels lively when people walk past. A bigger recess means less tilt per pose. Foam board is a handy spacer: 3/16 in (5 mm) or 1/8 in (3 mm).</p></li>
+      <li><h3>Print the test patches</h3><ul><li>Print <b>Test patch, back</b> on paper and <b>Test patch, front</b> on clear film, both at 100%.</li><li>Lay the film on the paper with a spacer the thickness of your recess under its edges, then slide it sideways until one clean butterfly shows.</li><li>If it looks muddy, lower the slits per inch. If the stripes are obvious, raise it.</li></ul></li>
+      <li><h3>Print the back layer</h3><ul><li><b>Lit from the front:</b> matte photo paper.</li><li><b>Lit from behind:</b> print on transparency film or vellum so light passes through. A sheet of your prism film or a piece of white paper behind it spreads the light evenly.</li><li>Use the printer's best quality and let the ink dry fully.</li></ul></li>
+      <li><h3>Print the front layer</h3><ul><li>Print on <b>clear inkjet transparency film</b> (rough, coated side) or laser film. The black must be solid: if light leaks through, print a second copy and stack them exactly.</li><li><b>Prism film</b> bends light and blurs the slits, so it's a poor barrier. Use it as the diffuser behind the back layer instead.</li><li>No glass needed: the film can be held flat by the box's front frame.</li></ul></li>
+      <li><h3>Assemble</h3><ul><li>Mount the back layer at the back of the box. If it's lit from behind, put the diffuser and light behind it.</li><li>Fit the spacer frame of your recess thickness all the way around.</li><li>Lay the front film on the spacer, then line up the corner marks on both layers.</li><li>Look straight at the box and slide the film a hair sideways until the whole window shows one clean pose. Then tape it down and close the frame.</li></ul></li>
+      <li><h3>Light it</h3><p>Even, soft light matters more than bright light. An LED panel or strip behind a diffuser gives the cleanest look for a backlit box. Send me the light you have and I'll tune the back-layer settings for it.</p></li>
+      <li><h3>Tilt and enjoy</h3><p>With slits running up and down, the butterfly flaps when you <b>turn the box side to side</b> or <b>walk past it</b>. With slits running sideways, tilt it forward and back instead. Change the angle and frame count later and reprint just the two layers.</p></li>
+    </ol>
+  </section>
+</div>
+
+<script>
+(()=>{'use strict';
+const $=s=>document.querySelector(s);
+const MM=25.4;
+const S={unit:'in',winW:5,winH:7,gap:0.1875,ov:0.25,N:8,lpi:10,vd:24,dpi:300,dir:'v',rev:false,art:'fly',c0:'#3f9be0',c1:'#0e3160',bsz:.86,backdrop:null,frames:[],ang:0,rock:true};
+const lenKeys=['winW','winH','gap','ov','vd'];
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;if(reduce)S.rock=false;
+
+/* ---------- the art ---------- */
+function fly(x,f,n,s){const ph=f/n*Math.PI*2,k=.5+.5*Math.cos(ph),sx=.16+.84*k;x.save();x.translate(0,s*.03-s*.025*Math.sin(ph));
+  for(const side of[-1,1]){x.save();x.scale(side*sx,1);x.lineJoin='round';
+    const up=x.createLinearGradient(0,-s*.4,s*.45,0);up.addColorStop(0,'#ffb629');up.addColorStop(.6,'#ff6a00');up.addColorStop(1,'#c22a00');
+    const w1=new Path2D();w1.moveTo(0,-s*.03);w1.bezierCurveTo(s*.08,-s*.44,s*.47,-s*.47,s*.45,-s*.17);w1.bezierCurveTo(s*.44,-s*.03,s*.2,s*.03,0,s*.02);w1.closePath();x.fillStyle=up;x.fill(w1);x.lineWidth=s*.022;x.strokeStyle='#0a0a0a';x.stroke(w1);
+    const w2=new Path2D();w2.moveTo(0,s*.02);w2.bezierCurveTo(s*.3,s*.03,s*.39,s*.2,s*.28,s*.36);w2.bezierCurveTo(s*.17,s*.45,s*.04,s*.27,0,s*.09);w2.closePath();x.fillStyle='#ff8a1a';x.fill(w2);x.stroke(w2);
+    x.lineWidth=s*.008;x.beginPath();for(const[ex,ey]of[[.3,-.38],[.42,-.24],[.4,-.08],[.24,.2],[.2,.34]]){x.moveTo(s*.02,0);x.lineTo(s*ex,s*ey)}x.stroke();
+    x.fillStyle='#fff';for(const[dx,dy,r]of[[.4,-.3,.016],[.43,-.2,.014],[.36,-.39,.014],[.27,.33,.013],[.32,.25,.012],[.41,-.1,.012]]){x.beginPath();x.arc(s*dx,s*dy,s*r,0,7);x.fill()}
+    x.fillStyle=`rgba(0,0,0,${.35*(1-k)})`;x.fill(w1);x.fill(w2);x.restore()}
+  x.fillStyle='#0a0a0a';x.beginPath();x.ellipse(0,s*.03,s*.022,s*.17,0,0,7);x.fill();x.beginPath();x.arc(0,-s*.15,s*.03,0,7);x.fill();
+  x.lineWidth=s*.008;x.strokeStyle='#0a0a0a';x.beginPath();x.moveTo(0,-s*.17);x.quadraticCurveTo(-s*.05,-s*.3,-s*.1,-s*.31);x.moveTo(0,-s*.17);x.quadraticCurveTo(s*.05,-s*.3,s*.1,-s*.31);x.stroke();x.restore()}
+function cover(x,img,W,H){const r=Math.max(W/img.width,H/img.height),w=img.width*r,h=img.height*r;x.drawImage(img,(W-w)/2,(H-h)/2,w,h)}
+function nFrames(){return S.art==='own'&&S.frames.length>=2?S.frames.length:S.N}
+/* draw pose f of n onto a W x H canvas context */
+function drawFrame(x,f,n,W,H){x.save();x.setTransform(1,0,0,1,0,0);
+  if(S.art==='own'&&S.frames.length>=2){x.fillStyle='#000';x.fillRect(0,0,W,H);cover(x,S.frames[f%S.frames.length],W,H);x.restore();return}
+  if(S.backdrop)cover(x,S.backdrop,W,H);
+  else{const g=x.createRadialGradient(W/2,H/2,Math.min(W,H)*.05,W/2,H/2,Math.max(W,H)*.62);g.addColorStop(0,S.c0);g.addColorStop(1,S.c1);x.fillStyle=g;x.fillRect(0,0,W,H)}
+  x.translate(W/2,H/2);fly(x,f,n,Math.min(W,H)*S.bsz);x.restore()}
+
+/* ---------- optics ---------- */
+const pitch=()=>1/S.lpi;                              // inches between slits
+const stretch=()=>(S.vd+S.gap)/S.vd;                  // back picture is drawn this much wider so the slits line up from the viewing distance
+function visibleFrame(angDeg){const n=nFrames(),sh=S.gap*Math.tan(angDeg*Math.PI/180)/pitch();let s=Math.floor((sh-Math.floor(sh))*n);if(s>=n)s=n-1;return S.rev?(n-1-s):s}
+
+/* runs of pixels along the slit axis: which pose each column shows (back) and where the slits are open (front) */
+function runs(L,dpi){const n=nFrames(),Pb=pitch()*dpi*stretch(),P=pitch()*dpi,back=[],open=[];let cur=-1,a=0,o=false,oa=0;
+  for(let i=0;i<=L;i++){let s=-2,op=false;if(i<L){const u=(i+.5-L/2)/Pb;s=Math.floor((u-Math.floor(u))*n);if(s>=n)s=n-1;if(S.rev)s=n-1-s;const v=(i+.5-L/2)/P;op=(v-Math.floor(v))<1/n}
+    if(s!==cur){if(cur>=0)back.push([cur,a,i-a]);cur=s;a=i}
+    if(op!==o){if(o)open.push([oa,i-oa]);o=op;oa=i}}
+  return{back,open}}
+
+/* ---------- print files ---------- */
+const tick=()=>new Promise(r=>setTimeout(r));
+async function buildPrint(kind,test){const dpi=S.dpi,wW=test?2:S.winW,wH=test?2:S.winH,ov=Math.max(S.ov,.3);
+  const W=Math.round((wW+2*ov)*dpi),H=Math.round((wH+2*ov)*dpi),wx0=Math.round(ov*dpi),wy0=wx0,wx1=W-wx0,wy1=H-wy0;
+  if(W*H>60e6)throw new Error('That print is too large for this device. Lower the dpi or the window size.');
+  const out=document.createElement('canvas');out.width=W;out.height=H;const o=out.getContext('2d');const vert=S.dir==='v',L=vert?W:H,R=runs(L,dpi);
+  if(kind==='back'){const fc=document.createElement('canvas');fc.width=W;fc.height=H;const fx=fc.getContext('2d'),n=nFrames();
+    for(let f=0;f<n;f++){drawFrame(fx,f,n,W,H);for(const[s,a,len]of R.back)if(s===f){vert?o.drawImage(fc,a,0,len,H,a,0,len,H):o.drawImage(fc,0,a,W,len,0,a,W,len)}status(`Interlacing pose ${f+1} of ${n}…`);await tick()}
+    fc.width=fc.height=1}
+  else{o.fillStyle='#000';o.fillRect(wx0,wy0,wx1-wx0,wy1-wy0);for(const[a,len]of R.open){vert?o.clearRect(a,wy0,len,wy1-wy0):o.clearRect(wx0,a,wx1-wx0,len)}}
+  marks(o,W,H,wx0,wy0,wx1,wy1,dpi,kind,test);return out}
+function marks(o,W,H,x0,y0,x1,y1,dpi,kind,test){const m=x0,len=m*.7,lw=Math.max(1,dpi/150);o.save();
+  const stroke=(fn)=>{if(kind==='back'){o.strokeStyle='#fff';o.lineWidth=lw*3;fn();o.stroke()}o.strokeStyle='#000';o.lineWidth=lw;fn();o.stroke()};
+  for(const[cx,cy,sx,sy]of[[x0,y0,-1,-1],[x1,y0,1,-1],[x0,y1,-1,1],[x1,y1,1,1]]){stroke(()=>{o.beginPath();o.moveTo(cx+sx*m*.15,cy);o.lineTo(cx+sx*(m*.15+len*.8),cy);o.moveTo(cx,cy+sy*m*.15);o.lineTo(cx,cy+sy*(m*.15+len*.8))})}
+  for(const[cx,cy,dx,dy]of[[W/2,y0,0,-1],[W/2,y1,0,1],[x0,H/2,-1,0],[x1,H/2,1,0]]){stroke(()=>{o.beginPath();o.moveTo(cx+dx*m*.15,cy+dy*m*.15);o.lineTo(cx+dx*m*.7,cy+dy*m*.7)})}
+  const yb=m*.42,xb=x0+m*.3;if(kind==='back'){o.fillStyle='#fff';o.fillRect(xb-lw*2,yb-lw*2-dpi*.05,dpi+lw*4,dpi*.1+lw*4)}o.fillStyle='#000';o.fillRect(xb,yb-dpi*.03,dpi,dpi*.06);
+  o.font=`${Math.round(dpi*.09)}px sans-serif`;o.textBaseline='middle';const t=(kind==='back'?'BACK LAYER':'FRONT FILM, print side up')+(test?' · TEST':'')+` · 1 in ruler · ${S.lpi} slits/in · ${nFrames()} poses · gap ${fmtLen(S.gap)}`;
+  if(kind==='back'){o.lineWidth=lw*3;o.strokeStyle='#fff';o.strokeText(t,xb+dpi*1.1,yb)}o.fillText(t,xb+dpi*1.1,yb);o.restore()}
+/* PNGs carry no print size by default; add a pHYs chunk so printers know the dpi */
+const CRC=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xedb88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+function crc(b){let c=0xffffffff;for(const v of b)c=CRC[(c^v)&255]^(c>>>8);return(c^0xffffffff)>>>0}
+async function pngWithDpi(canvas,dpi){const blob=await new Promise((ok,no)=>canvas.toBlob(b=>b?ok(b):no(new Error('This device could not encode the image.')),'image/png'));
+  const src=new Uint8Array(await blob.arrayBuffer()),ppm=Math.round(dpi/0.0254),ch=new Uint8Array(21),dv=new DataView(ch.buffer);
+  dv.setUint32(0,9);ch.set([112,72,89,115],4);dv.setUint32(8,ppm);dv.setUint32(12,ppm);ch[16]=1;dv.setUint32(17,crc(ch.subarray(4,17)));
+  const at=33,res=new Uint8Array(src.length+21);res.set(src.subarray(0,at));res.set(ch,at);res.set(src.subarray(at),at+21);return new Blob([res],{type:'image/png'})}
+
+let dl=null;const status=t=>{$('#status').textContent=t};
+async function download(kind,test){if(!dl){$('#noDl').hidden=false;return}
+  const btns=[...document.querySelectorAll('.dl .btn')];btns.forEach(b=>b.disabled=true);
+  try{status('Building the print file…');await tick();const c=await buildPrint(kind,test),blob=await pngWithDpi(c,S.dpi);c.width=c.height=1;
+    const sz=`${test?2:S.winW}x${test?2:S.winH}${S.unit==='mm'?'':'in'}`;
+    const name=`${test?'test-':''}${kind==='back'?'back-layer':'front-slits'}-${S.lpi}lpi-${nFrames()}f-${S.dpi}dpi.png`;
+    status('Waiting for you to confirm the download…');await dl.save({filename:name,data:blob});status(`Saved ${name}. Print at 100%.`)}
+  catch(e){status(e&&e.code==='declined'?'Download cancelled.':e&&e.code==='rate_limited'?'Another download is waiting for confirmation.':'Could not make the file: '+(e&&e.message||e))}
+  finally{btns.forEach(b=>b.disabled=false)}}
+
+/* ---------- preview ---------- */
+const pv=$('#pv'),px=pv.getContext('2d'),box=$('#box');let cache=null,cacheKey='';
+function layoutPreview(){const avail=Math.min($('#scene').clientWidth-40,460),maxH=Math.min(innerHeight*.62,560);
+  let w=avail,h=w*S.winH/S.winW;if(h>maxH){h=maxH;w=h*S.winW/S.winH}w=Math.max(120,Math.round(w));h=Math.round(h);
+  const d=Math.min(2,devicePixelRatio||1);if(pv.width!==Math.round(w*d)||pv.height!==Math.round(h*d)){pv.width=Math.round(w*d);pv.height=Math.round(h*d)}pv.style.width=w+'px';pv.style.height=h+'px';
+  box.style.setProperty('--bez',Math.round(Math.max(10,w*.05))+'px')}
+function frames(){const n=nFrames(),key=[pv.width,pv.height,n,S.art,S.c0,S.c1,S.bsz,!!S.backdrop,S.frames.length].join();if(key===cacheKey)return cache;
+  cache=[];for(let f=0;f<n;f++){const c=document.createElement('canvas');c.width=pv.width;c.height=pv.height;drawFrame(c.getContext('2d'),f,n,c.width,c.height);cache.push(c)}cacheKey=key;return cache}
+function draw(){const fr=frames(),f=visibleFrame(S.ang),W=pv.width,H=pv.height,n=nFrames();px.drawImage(fr[f],0,0);
+  const P=pitch()*W/S.winW;px.fillStyle=`rgba(0,0,0,${Math.min(.72,(1-1/n)*.62)})`;px.fillRect(0,0,W,H);
+  if(P>=4){px.fillStyle='rgba(0,0,0,.35)';const vert=S.dir==='v',L=vert?W:H;for(let i=L/2%P-P;i<L;i+=P){const a=i+P/n;vert?px.fillRect(a,0,P-P/n,H):px.fillRect(0,a,W,P-P/n)}}
+  const tilt=S.ang*.55;box.style.transform=S.dir==='v'?`rotateY(${tilt}deg)`:`rotateX(${-tilt}deg)`;
+  $('#angOut').textContent=S.ang.toFixed(1)+'°';$('#scene').setAttribute('aria-valuenow',S.ang.toFixed(0))}
+function readout(){const n=nFrames(),slit=pitch()/n,dpf=Math.atan(slit/S.gap)*180/Math.PI,loop=Math.atan(pitch()/S.gap)*180/Math.PI,ov=Math.max(S.ov,.3);
+  const items=[['print size',`${fmtLen(S.winW+2*ov)} × ${fmtLen(S.winH+2*ov)}`],['slit width',`${fmtLen(slit)} (${(slit*S.dpi).toFixed(1)} px)`],['per pose',`${dpf.toFixed(1)}°`],['full loop every',`${loop.toFixed(1)}°`],['back stretch',`+${((stretch()-1)*100).toFixed(2)}%`]];
+  $('#readout').innerHTML='';for(const[k,v]of items){const s=document.createElement('span');s.textContent=k+' ';const b=document.createElement('b');b.textContent=v;s.append(b);$('#readout').append(s)}
+  const warn=slit*S.dpi<2;$('#status').textContent=warn?'Slits are under 2 printer pixels wide: lower the slits per inch or the frame count, or raise the dpi.':''}
+
+/* ---------- units & inputs ---------- */
+function fmtLen(inch){return S.unit==='mm'?(inch*MM).toFixed(1)+' mm':(+inch.toFixed(3))+' in'}
+function syncInputs(){for(const k of lenKeys){const el=$('#'+k);el.value=S.unit==='mm'?+(S[k]*MM).toFixed(1):+S[k].toFixed(3);el.step=S.unit==='mm'?'0.5':(k==='gap'?'0.01':'0.05')}
+  $('#N').value=S.N;$('#lpi').value=S.lpi;$('#dpi').value=S.dpi;$('#rev').checked=S.rev;$('#rock').checked=S.rock}
+for(const k of lenKeys)$('#'+k).addEventListener('input',e=>{const v=parseFloat(e.target.value);if(!(v>0)&&!(k==='ov'&&v===0))return;S[k]=S.unit==='mm'?v/MM:v;changed()});
+$('#N').addEventListener('input',e=>{const v=Math.round(+e.target.value);if(v>=2&&v<=12){S.N=v;changed()}});
+$('#lpi').addEventListener('input',e=>{const v=+e.target.value;if(v>=2&&v<=40){S.lpi=v;changed()}});
+$('#dpi').addEventListener('change',e=>{S.dpi=+e.target.value;changed()});
+$('#rev').addEventListener('change',e=>{S.rev=e.target.checked;changed()});
+$('#rock').addEventListener('change',e=>{S.rock=e.target.checked});
+for(const k of['c0','c1'])$('#'+k).addEventListener('input',e=>{S[k]=e.target.value;changed()});
+$('#bsz').addEventListener('input',e=>{S.bsz=+e.target.value;changed()});
+$('#ang').addEventListener('input',e=>{S.ang=+e.target.value;S.rock=false;$('#rock').checked=false;draw()});
+function seg(id,attr,fn){const el=$(id);el.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;el.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));fn(b.dataset[attr])})}
+seg('#unitSeg','u',u=>{S.unit=u;syncInputs();readout()});
+seg('#dirSeg','d',d=>{S.dir=d;changed()});
+seg('#artSeg','a',a=>{S.art=a;$('#flyOpts').hidden=a!=='fly';$('#ownOpts').hidden=a!=='own';changed()});
+async function loadImg(file){const url=URL.createObjectURL(file);try{const im=new Image();im.src=url;await im.decode();return im}finally{setTimeout(()=>URL.revokeObjectURL(url),30000)}}
+$('#bdFile').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{S.backdrop=await loadImg(f);$('#bdName').textContent=f.name;changed()}catch{$('#bdName').textContent='That file could not be read as an image.'}});
+$('#frFiles').addEventListener('change',async e=>{const files=[...e.target.files].slice(0,12);if(files.length<2){status('Pick at least 2 images, one per pose.');return}
+  try{S.frames=await Promise.all(files.map(loadImg));const th=$('#thumbs');th.textContent='';S.frames.forEach(im=>{const c=document.createElement('canvas');c.width=c.height=88;cover(c.getContext('2d'),im,88,88);th.append(c)});changed()}
+  catch{status('One of those files could not be read as an image.')}});
+$('#dlBack').onclick=()=>download('back',false);$('#dlFront').onclick=()=>download('front',false);
+$('#dlTestB').onclick=()=>download('back',true);$('#dlTestF').onclick=()=>download('front',true);
+
+/* drag / keys to tilt */
+{const sc=$('#scene');let d=null;sc.addEventListener('pointerdown',e=>{d={x:e.clientX,a:S.ang};S.rock=false;$('#rock').checked=false;sc.setPointerCapture(e.pointerId)});
+ sc.addEventListener('pointermove',e=>{if(!d)return;S.ang=Math.max(-30,Math.min(30,d.a+(e.clientX-d.x)*.12));$('#ang').value=S.ang;draw()});
+ const end=()=>{d=null};sc.addEventListener('pointerup',end);sc.addEventListener('pointercancel',end);
+ sc.addEventListener('keydown',e=>{const k={ArrowLeft:-1,ArrowDown:-1,ArrowRight:1,ArrowUp:1}[e.key];if(!k)return;e.preventDefault();S.rock=false;$('#rock').checked=false;S.ang=Math.max(-30,Math.min(30,S.ang+k*.5));$('#ang').value=S.ang;draw()})}
+
+function changed(){layoutPreview();readout();draw()}
+let t0=performance.now();function loop(t){if(S.rock){const loopDeg=Math.atan(pitch()/S.gap)*180/Math.PI,amp=Math.min(24,Math.max(loopDeg*1.2,6));S.ang=amp*Math.sin((t-t0)/1000*0.9);$('#ang').value=S.ang;draw()}requestAnimationFrame(loop)}
+addEventListener('resize',()=>{layoutPreview();draw()});
+syncInputs();changed();requestAnimationFrame(loop);
+(async()=>{try{dl=window.claude&&await window.claude.use('downloads')}catch{dl=null}if(!dl)$('#noDl').hidden=false})();
+})();
+</script>
