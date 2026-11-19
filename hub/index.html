@@ -170,7 +170,8 @@ dialog::backdrop{background:rgba(20,16,12,.45)}
       <option value="score">Most working</option>
     </select>
     <span class="spacer"></span>
-    <button class="btn primary" id="addBtn">+ Add app</button>
+    <button class="btn primary" id="pasteBtn">Paste links</button>
+    <button class="btn" id="addBtn">+ Add app</button>
     <button class="btn" id="exportBtn">Export JSON</button>
     <button class="btn" id="importBtn">Import</button>
     <input type="file" id="importFile" accept="application/json" hidden>
@@ -197,6 +198,7 @@ const store = {
 };
 let saved = store.get(KEY) || {};
 let apps = Array.isArray(saved.apps) ? saved.apps : structuredClone(window.HUB_APPS);
+if(Array.isArray(saved.apps)){ const have = new Set(apps.map(a => a.id)); window.HUB_APPS.forEach(a => { if(!have.has(a.id)) apps.push(structuredClone(a)); }); }
 let ui = Object.assign({view:"board", filter:"all", sort:"future"}, saved.ui || {});
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -261,7 +263,7 @@ function renderBoard(){
     const all = apps.filter(a => a.platform === p.id).length;
     const body = items.length ? `<div class="grid">${items.map(cardHTML).join("")}</div>`
       : `<div class="empty">${all ? "No apps here match this filter." : `No ${esc(p.label)} apps yet. Paste a link to start this lane.`}
-         ${all ? "" : `<button class="btn" data-act="add" data-plat="${p.id}">+ Add ${esc(p.label)} app</button>`}</div>`;
+         ${all ? "" : `<button class="btn primary" data-act="paste" data-plat="${p.id}">Paste ${esc(p.label)} links</button>`}</div>`;
     return `<section class="lane"><div class="lane-head">
       <h2 class="marker">${esc(p.label)}</h2>${p.main ? '<span class="main-tag">Main</span>' : ""}
       <span class="note">${esc(p.note)}</span><span class="count">${items.length}/${all}</span></div>${body}</section>`;
@@ -396,6 +398,7 @@ document.addEventListener("click", e => {
     case "edit": openEditor(a, false); break;
     case "jump": case "node": jump(b.dataset.id); break;
     case "add": openEditor(newApp(b.dataset.plat), true); break;
+    case "paste": openPaste(b.dataset.plat); break;
     case "shot": e.preventDefault(); pickShot(d => { a.shot = d; save(); render(); toast("Screenshot added"); }); break;
   }
 });
@@ -404,6 +407,46 @@ $("#vWeb").onclick = () => { ui.view = "web"; save(); render(); };
 $("#filter").onchange = e => { ui.filter = e.target.value; save(); render(); };
 $("#sort").onchange = e => { ui.sort = e.target.value; save(); render(); };
 $("#addBtn").onclick = () => openEditor(newApp(), true);
+$("#pasteBtn").onclick = () => openPaste();
+
+/* ---------- paste many links at once ---------- */
+function detectPlat(u, fallback){
+  const h = (() => { try{ return new URL(u).hostname; }catch(e){ return ""; } })();
+  if(/(^|\.)chatgpt\.com$|openai\.com$/.test(h)) return "chatgpt";
+  if(/aistudio\.google\.com$|ai\.studio$|\.run\.app$|makersuite|generativelanguage/.test(h)) return "aistudio";
+  if(/claude\.ai$|claude\.site$/.test(h)) return "claude";
+  if(/vercel\.app$|v0\.dev$|v0\.app$/.test(h)) return "vercel";
+  if(/github\.com$|github\.io$/.test(h)) return "github";
+  return fallback || "vercel";
+}
+function nameFrom(u){
+  try{ const x = new URL(u); const seg = x.pathname.split("/").filter(Boolean).pop();
+    return (x.hostname.replace(/^www\./,"").split(".")[0] + (seg && seg.length < 40 ? " · " + seg : "")).replace(/[-_]/g," "); }
+  catch(e){ return "New app"; }
+}
+function openPaste(plat){
+  const f = $("#form");
+  f.innerHTML = `<h2 class="marker">Paste links</h2>
+    <p style="margin:0;color:var(--ink-2)">One link per line. Add a name first if you like: <code>Fish mixer | https://…</code>. Each link goes in its own lane: chatgpt.com goes to ChatGPT, aistudio.google.com and run.app go to Google AI Studio, claude.ai goes to Claude, vercel.app goes to Vercel.</p>
+    <div class="field"><label for="p-text">Links</label><textarea id="p-text" rows="8" placeholder="https://chatgpt.com/canvas/shared/…&#10;My AI Studio app | https://aistudio.google.com/apps/…"></textarea></div>
+    <div class="field"><label for="p-plat">If a link isn't recognised, put it under</label><select id="p-plat">${PLAT.map(p => `<option value="${p.id}" ${p.id===(plat||"chatgpt")?"selected":""}>${esc(p.label)}</option>`).join("")}</select></div>
+    <div class="dlg-foot"><button type="button" class="btn" id="p-cancel">Cancel</button><button type="submit" class="btn primary" value="ok">Add links to board</button></div>`;
+  $("#p-cancel").onclick = () => $("#dlg").close();
+  f.onsubmit = e => {
+    if(e.submitter && e.submitter.value !== "ok") return;
+    const have = new Set(apps.map(a => a.url)); let added = 0, dup = 0;
+    $("#p-text").value.split(/\n+/).map(l => l.trim()).filter(Boolean).forEach((line, i) => {
+      const m = line.match(/https?:\/\/\S+/); if(!m) return;
+      const url = m[0].replace(/[),.]+$/,""); if(have.has(url)){ dup++; return; }
+      const label = line.slice(0, m.index).replace(/[|\-–:]\s*$/,"").trim();
+      const a = newApp(detectPlat(url, $("#p-plat").value)); a.id += i; a.url = url; a.name = label || nameFrom(url);
+      apps.push(a); have.add(url); added++;
+    });
+    save(); render();
+    toast(added ? `Added ${added} app${added>1?"s":""}${dup?` (${dup} already on the board)`:""}. Click Add screenshot on each card.` : dup ? "Those links are already on the board." : "No links found. Paste full links that start with https://");
+  };
+  $("#dlg").showModal(); $("#p-text").focus();
+}
 $("#exportBtn").onclick = () => {
   const blob = new Blob([JSON.stringify(apps, null, 2)], {type:"application/json"});
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "infinite-frames-hub.json"; a.click();

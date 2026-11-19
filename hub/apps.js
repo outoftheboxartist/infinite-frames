@@ -8,8 +8,8 @@ window.HUB_PLATFORMS = [
   { id: "vercel", label: "Vercel", note: "Main · production home", main: true },
   { id: "claude", label: "Claude artifacts", note: "claude.ai pages" },
   { id: "github", label: "GitHub folders", note: "outoftheboxartist/infinite-frames" },
-  { id: "chatgpt", label: "ChatGPT sites", note: "Paste links with + Add app" },
-  { id: "aistudio", label: "Google AI Studio", note: "Paste links with + Add app" }
+  { id: "chatgpt", label: "ChatGPT sites", note: "Paste your links with Paste links" },
+  { id: "aistudio", label: "Google AI Studio", note: "Paste your links with Paste links" }
 ];
 
 window.HUB_COLUMNS = [
@@ -144,7 +144,7 @@ window.HUB_APPS = [
   {
     id: "if-nested-lab", platform: "claude", name: "Nested Lab",
     url: "https://claude.ai/artifact/XE2WrAHu9xCPdTdWaKmuYZ", code: "", shot: "",
-    date: "2026-11-17", features: "Experiments with nested zoom; its engine was moved into the Engine build.",
+    date: "2026-11-17", features: "Anchor-relative camera for endless nested shapes (depth gauge, Dive, stats, SVG import). Its engine moved into the Engine build.",
     status: { if: 2, test: 1, ui: 1, perfect: 0, users: 0, frames: 1 }, links: ["foveated-zoom"]
   },
   {
@@ -157,9 +157,9 @@ window.HUB_APPS = [
   },
   {
     id: "foveated-zoom", platform: "claude", name: "Foveated Zoom",
-    url: "https://claude.ai/artifact/PfnF7xLT52Wcu6hzNNLWDj", code: "", shot: "",
-    date: "2026-11-15", features: "Zoom detail test.",
-    status: { if: 1, test: 0, ui: 0, perfect: 0, users: 0, frames: 0 }, links: ["if-engine-v2"]
+    url: "https://claude.ai/artifact/PfnF7xLT52Wcu6hzNNLWDj", code: "", shot: "shots/artifact-foveated-zoom.jpg",
+    date: "2026-11-15", features: "Endless 8× nested canvases; detail stays sharp near your finger and dissolves into prism sparkles at the edges. Move/Draw, 4 inks.",
+    status: { if: 2, test: 1, ui: 1, perfect: 0, users: 0, frames: 0 }, links: ["if-engine-v2"]
   },
   {
     id: "if-playground", platform: "claude", name: "Infinite Frames Playground",
@@ -170,21 +170,35 @@ window.HUB_APPS = [
   },
   {
     id: "if-box", platform: "claude", name: "IF Box",
-    url: "https://claude.ai/artifact/ULYqYECVT3rRqwWe3cJu9m", code: "", shot: "",
-    date: "2026-11-11", features: "Box concept.",
-    status: { if: 1, test: 0, ui: 0, perfect: 0, users: 0, frames: 0 }, links: ["if-artifact"]
+    url: "https://claude.ai/artifact/ULYqYECVT3rRqwWe3cJu9m", code: "", shot: "shots/artifact-if-box.jpg",
+    date: "2026-11-11", features: "Solid 3D open box with a grid floor; orbit or lock to top view (the 2D canvas position).",
+    status: { if: 2, test: 1, ui: 1, perfect: 0, users: 0, frames: 0 }, links: ["if-artifact"]
   },
   {
-    id: "ui-artifact", platform: "claude", name: "ui",
+    id: "ui-artifact", platform: "claude", name: "ui (Claude Design project)",
     url: "https://claude.ai/artifact/UiECL3gJGS54bh7r1TgLYF", code: "", shot: "",
-    date: "2026-11-12", features: "UI sketch.",
+    date: "2026-11-12", features: "A Claude Design project moved into claude.ai. Open it to see its pages.",
     status: { if: 1, test: 0, ui: 1, perfect: 0, users: 0, frames: 0 }, links: ["if-ui-shape"]
   },
   {
     id: "if-artifact-old", platform: "claude", name: "Infinite Frames (earlier copy)",
     url: "https://claude.ai/artifact/CTUvRkJnkrGG5evxL2TEbg", code: "", shot: "",
-    date: "2026-11-12", features: "Earlier copy of the main artifact.",
+    date: "2026-11-12", features: "Earlier build: frame strip, onion skin, closed-curve regions, EXPLORE / CREATE / PROFILE flaps, draft then Publish.",
     status: { if: 1, test: 0, ui: 0, perfect: 0, users: 0, frames: 0 }, links: ["if-artifact"]
+  },
+
+  {
+    id: "incomplete-request", platform: "claude", name: "Incomplete Request (opinion field)",
+    url: "https://claude.ai/artifact/DR3rE3b8KgZ2W7tdUNJ6Y5", code: "", shot: "shots/artifact-incomplete-request.jpg",
+    date: "2026-11-12",
+    features: "3D dusk field of 600 sample people; hills show where the room agrees. Pick two questions as axes, drag yourself, choose your colour.",
+    status: { if: 2, test: 1, ui: 2, perfect: 0, users: 1, frames: 0 }, links: []
+  },
+  {
+    id: "untitled-design", platform: "claude", name: "Untitled (empty Design canvas)",
+    url: "https://claude.ai/artifact/JiC27pKpr8RZATNXpmty2C", code: "", shot: "",
+    date: "2026-11-12", features: "A Design canvas with nothing on it yet.",
+    status: { if: 0, test: 0, ui: 0, perfect: 0, users: 0, frames: 0 }, links: []
   },
 
   // ---------- GitHub folders ----------
