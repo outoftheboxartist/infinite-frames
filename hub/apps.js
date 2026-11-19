@@ -4,6 +4,31 @@
 //   values: 0 = not yet, 1 = in progress / partly, 2 = works ✓
 // links: ids of apps this one stitches into (draws a line in Web view).
 
+// "Start here" strip shown at the top of the board. Mirrors AI_HANDOFF.md.
+window.HUB_START = {
+  mainApp: "if-rebuild",
+  branch: "feature/guest-test-profiles-supabase-20261114",
+  branchUrl: "https://github.com/outoftheboxartist/infinite-frames/tree/feature/guest-test-profiles-supabase-20261114",
+  pr: "https://github.com/outoftheboxartist/infinite-frames/pull/6",
+  preview: "https://infinite-frames-rebuild-preview-8ngli7mnw.vercel.app",
+  handoff: "https://github.com/outoftheboxartist/infinite-frames/blob/feature/guest-test-profiles-supabase-20261114/AI_HANDOFF.md",
+  notes: [
+    "The default branch inthebox is NOT the latest app.",
+    "Engine V2 is a speed experiment, not a replacement UI."
+  ],
+  rules: [
+    "Fetch the branch head before every work session. GitHub is the shared source of truth, not either model's memory.",
+    "Work in branches and PRs. Never overwrite or merge inthebox without approval.",
+    "Keep the original application as the target, not engine-v2.",
+    "Preserve all artwork and existing app features.",
+    "Run regression tests and check syntax; publish a preview before saying a fix works.",
+    "Say what was tested in code versus checked on a real phone, browser or Supabase.",
+    "Never weaken production auth, RLS or storage permissions to make testing easier.",
+    "Commit a short update to AI_HANDOFF.md when architecture or test flows change.",
+    "Coordinate through the latest commits and PRs: assistants do not sync live."
+  ]
+};
+
 window.HUB_PLATFORMS = [
   { id: "vercel", label: "Vercel", note: "Main · production home", main: true },
   { id: "claude", label: "Claude artifacts", note: "claude.ai pages" },
@@ -27,42 +52,42 @@ const VC = "https://vercel.com/outoftheboxartists-projects/";
 window.HUB_APPS = [
   // ---------- Vercel ----------
   {
-    id: "if-engine", platform: "vercel", name: "Infinite Frames · Engine",
+    id: "if-engine", platform: "vercel", name: "Infinite Frames · Engine", role: "candidate",
     url: "https://infinite-frames-engine.vercel.app",
     code: REPO + "/tree/feature/canvas-engine-transplant-20261117",
     dash: VC + "infinite-frames-engine", shot: "shots/infinite-frames-engine.jpg",
     date: "2026-11-17",
-    features: "Original app with the nested canvas engine: map-style tile cache, lab-style navigation, shared guest test world, 3D box.",
+    features: "Newer branch: the original app with the nested canvas engine (tile cache, lab-style navigation, shared guest test world, 3D box). Not main yet; merge into the main branch when it is proven.",
     status: { if: 2, test: 1, ui: 2, perfect: 1, users: 1, frames: 2 },
     links: ["if-artifact", "if-rebuild", "if-nested-lab"]
   },
   {
-    id: "if-rebuild", platform: "vercel", name: "Rebuild Preview",
-    url: "https://infinite-frames-rebuild-preview.vercel.app",
+    id: "if-rebuild", platform: "vercel", name: "Rebuild Preview", role: "main",
+    url: "https://infinite-frames-rebuild-preview-8ngli7mnw.vercel.app",
     code: REPO + "/tree/feature/guest-test-profiles-supabase-20261114",
     dash: VC + "infinite-frames-rebuild-preview", shot: "shots/infinite-frames-rebuild-preview.jpg",
     date: "2026-11-14",
-    features: "Guest test profiles on Supabase, cloud save, offline reset, single-SVG publish.",
+    features: "THE MAIN APP. Original UI with passwordless test profiles, local-first test canvas with Supabase sandbox backup, reset, curve hit selection, region navigation, Publish & Lock. Draft PR #6.",
     status: { if: 2, test: 2, ui: 1, perfect: 0, users: 2, frames: 1 },
     links: ["if-engine"]
   },
   {
-    id: "if-v2-integration", platform: "vercel", name: "Spatial Engine V2 · Integration",
+    id: "if-v2-integration", platform: "vercel", name: "Spatial Engine V2 · Integration", role: "experiment",
     url: "https://infinite-frames-v2-integration.vercel.app",
     code: REPO + "/tree/feature/v2-real-world-renderer",
     dash: VC + "infinite-frames-v2-integration", shot: "shots/infinite-frames-v2-integration.jpg",
     date: "2026-11-14",
-    features: "V2 renderer reading the real world read-only; published geometry storage.",
+    features: "Speed experiment, not a UI replacement. V2 renderer reading the real world read-only.",
     status: { if: 2, test: 1, ui: 1, perfect: 0, users: 0, frames: 1 },
-    links: ["if-engine-v2"]
+    links: ["if-engine-v2", "if-rebuild"]
   },
   {
-    id: "if-engine-v2", platform: "vercel", name: "Spatial Engine V2",
+    id: "if-engine-v2", platform: "vercel", name: "Spatial Engine V2", role: "experiment",
     url: "https://infinite-frames-engine-v2.vercel.app",
     code: REPO + "/tree/engine/v2-spatial-foundation",
     dash: VC + "infinite-frames-engine-v2", shot: "shots/infinite-frames-engine-v2.jpg",
     date: "2026-11-14",
-    features: "Spatial foundation: relationship-based opacity, one world infinite detail, speed/stats HUD.",
+    features: "Speed experiment, not a UI replacement. Its viewport/quadtree tricks are already folded into the main app.",
     status: { if: 2, test: 1, ui: 1, perfect: 0, users: 0, frames: 0 },
     links: ["if-spatial"]
   },
@@ -202,6 +227,14 @@ window.HUB_APPS = [
   },
 
   // ---------- GitHub folders ----------
+  {
+    id: "ai-handoff", platform: "github", name: "AI_HANDOFF.md (read first)", role: "main",
+    url: REPO + "/blob/feature/guest-test-profiles-supabase-20261114/AI_HANDOFF.md",
+    code: REPO + "/tree/feature/guest-test-profiles-supabase-20261114",
+    shot: "", date: "2026-11-14",
+    features: "Shared notes for Claude, ChatGPT and any coding agent: current branch, PR, preview, database rules and what still needs checking.",
+    status: { if: 2, test: 0, ui: 0, perfect: 1, users: 0, frames: 0 }, links: ["if-rebuild"]
+  },
   {
     id: "if-repo-app", platform: "github", name: "app/ (main app source)",
     url: REPO + "/blob/main/app/local-preview.html", code: REPO + "/tree/main/app",
