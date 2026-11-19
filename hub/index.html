@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Infinite Frames Hub</title>
+<meta name="description" content="One whiteboard for every Infinite Frames app across Vercel, Claude, GitHub, ChatGPT and Google AI Studio.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Permanent+Marker&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#e8e0d2; --board:#d9c7a7; --wood:#efe4cf; --card:#fffdf8; --ink:#1f1a14; --ink-2:#5b5145; --ink-3:#8a7e6f;
+  --line:#cdbfa8; --line-2:#b9a88c; --accent:#1f1a14; --works:#2f7d4f; --works-bg:#dcefe2; --part:#a86a12; --part-bg:#f6e7c8;
+  --none:#c8bdad; --edge:#6b5a44; --focus:#2563eb; --shadow:0 1px 0 rgba(31,26,20,.06),0 2px 8px rgba(31,26,20,.06);
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#15120e; --board:#1f1a14; --wood:#2a241c; --card:#211c16; --ink:#f3ece0; --ink-2:#c5b9a7; --ink-3:#8f8474;
+    --line:#3a3228; --line-2:#4c4235; --accent:#f3ece0; --works:#6fcf97; --works-bg:#1d3a28; --part:#e7b25a; --part-bg:#3d2f17;
+    --none:#4a4136; --edge:#a8977e; --shadow:0 1px 0 rgba(0,0,0,.3),0 2px 10px rgba(0,0,0,.3);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#15120e; --board:#1f1a14; --wood:#2a241c; --card:#211c16; --ink:#f3ece0; --ink-2:#c5b9a7; --ink-3:#8f8474;
+  --line:#3a3228; --line-2:#4c4235; --accent:#f3ece0; --works:#6fcf97; --works-bg:#1d3a28; --part:#e7b25a; --part-bg:#3d2f17;
+  --none:#4a4136; --edge:#a8977e; --shadow:0 1px 0 rgba(0,0,0,.3),0 2px 10px rgba(0,0,0,.3);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.45 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.marker{font-family:"Permanent Marker",cursive;letter-spacing:.01em}
+.wrap{max-width:1280px;margin:0 auto;padding:24px 16px 64px}
+
+/* header = top rail of the board */
+.top{display:grid;grid-template-columns:1fr auto;gap:16px;align-items:end;border-bottom:3px solid var(--ink);padding-bottom:16px}
+.top h1{margin:0;font-size:clamp(24px,4vw,40px);line-height:1.1;font-weight:400}
+.top .sub{color:var(--ink-2);margin-top:6px}
+.target{margin-top:16px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.target label{font-family:"Permanent Marker",cursive;font-size:20px}
+.target input{flex:1;min-width:220px;border:0;border-bottom:2px dashed var(--line-2);background:transparent;padding:4px 2px;font-size:16px}
+.target input:focus{outline:none;border-bottom-color:var(--focus)}
+.stats{display:flex;gap:16px;text-align:right}
+.stat b{display:block;font-size:24px;font-variant-numeric:tabular-nums}
+.stat span{color:var(--ink-3);font-size:12px}
+
+/* toolbar */
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:16px 0 24px}
+.seg{display:inline-flex;border:1px solid var(--line-2);border-radius:8px;overflow:hidden;background:var(--card)}
+.seg button{border:0;background:transparent;padding:8px 12px;cursor:pointer;min-height:36px}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.btn{border:1px solid var(--line-2);background:var(--card);border-radius:8px;padding:8px 12px;cursor:pointer;min-height:36px}
+.btn:hover{border-color:var(--ink-3)}
+.btn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.spacer{flex:1}
+select.btn{padding-right:28px}
+
+/* lanes */
+.lane{margin-bottom:32px}
+.lane-head{display:flex;align-items:baseline;gap:12px;border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:16px}
+.lane-head h2{margin:0;font-size:22px;font-weight:400}
+.lane-head .note{color:var(--ink-3)}
+.lane-head .count{margin-left:auto;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.main-tag{font:600 11px Inter;text-transform:uppercase;letter-spacing:.06em;background:var(--ink);color:var(--bg);padding:2px 8px;border-radius:99px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+.empty{border:2px dashed var(--line-2);border-radius:var(--r);padding:24px;color:var(--ink-2);display:flex;flex-direction:column;gap:12px;align-items:flex-start}
+
+/* card */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden;scroll-margin-top:16px}
+.card.flash{outline:3px solid var(--focus)}
+.shot{aspect-ratio:16/10;background:var(--wood);border-bottom:1px solid var(--line);position:relative;display:block}
+.shot img{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
+.shot .ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--ink-3);font-size:13px}
+.body{padding:12px;display:flex;flex-direction:column;gap:10px;flex:1}
+.title{display:flex;gap:8px;align-items:flex-start}
+.title h3{margin:0;font-size:15px;font-weight:600;flex:1}
+.date{color:var(--ink-3);font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.feat{color:var(--ink-2);font-size:13px;margin:0}
+.status{display:grid;grid-template-columns:repeat(6,1fr);border:1px solid var(--line-2);border-radius:6px;overflow:hidden}
+.status button{border:0;border-right:1px solid var(--line);background:transparent;padding:6px 0 4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;min-height:40px}
+.status button:last-child{border-right:0}
+.status .k{font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em}
+.status .v{font-weight:600;font-size:13px;line-height:1}
+.status button[data-v="2"]{background:var(--works-bg)} .status button[data-v="2"] .v{color:var(--works)}
+.status button[data-v="1"]{background:var(--part-bg)} .status button[data-v="1"] .v{color:var(--part)}
+.status button[data-v="0"] .v{color:var(--none)}
+.links{display:flex;flex-wrap:wrap;gap:6px}
+.links a,.links button{font-size:12px;text-decoration:none;border:1px solid var(--line-2);border-radius:6px;padding:4px 8px;background:transparent;cursor:pointer}
+.links a:hover,.links button:hover{border-color:var(--ink-3)}
+.links a.go{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.links .off{color:var(--ink-3);border-style:dashed;cursor:default}
+.stitch{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:12px;color:var(--ink-3);border-top:1px dashed var(--line);padding-top:8px;margin-top:auto}
+.chip{border:0;background:var(--wood);border-radius:99px;padding:2px 8px;font-size:12px;cursor:pointer;color:var(--ink-2)}
+.chip:hover{color:var(--ink)}
+
+/* web view */
+.web-wrap{background:var(--board);border:1px solid var(--line);border-radius:var(--r);overflow:auto;max-height:78vh}
+.web{position:relative}
+.web svg{position:absolute;inset:0;pointer-events:none}
+.web .col-h{position:absolute;top:12px;font-family:"Permanent Marker",cursive;font-size:18px;text-align:center}
+.node{position:absolute;width:168px;background:var(--card);border:1px solid var(--line-2);border-radius:8px;box-shadow:var(--shadow);cursor:pointer;overflow:hidden;text-align:left;padding:0}
+.node img,.node .nph{width:100%;height:72px;object-fit:cover;object-position:top;display:block;background:var(--wood)}
+.node .nm{padding:6px 8px;font-size:12px;font-weight:600;display:flex;gap:6px;align-items:center;white-space:nowrap}
+.node .nm span:last-child{overflow:hidden;text-overflow:ellipsis}
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+.node.dim{opacity:.35}
+.edge{fill:none;stroke:var(--edge);stroke-width:1.5;opacity:.55}
+.edge.hot{stroke:var(--focus);opacity:1;stroke-width:2.5}
+.legend{display:flex;gap:16px;color:var(--ink-2);font-size:12px;margin-top:8px;flex-wrap:wrap}
+
+/* dialog */
+dialog{border:1px solid var(--line-2);border-radius:12px;background:var(--card);color:var(--ink);padding:0;width:min(560px,calc(100vw - 32px));box-shadow:0 20px 60px rgba(0,0,0,.25)}
+dialog::backdrop{background:rgba(20,16,12,.45)}
+.dlg{padding:20px;display:flex;flex-direction:column;gap:12px;max-height:85vh;overflow:auto}
+.dlg h2{margin:0;font-size:20px;font-weight:400}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:12px;font-weight:600;color:var(--ink-2)}
+.field input,.field select,.field textarea{border:1px solid var(--line-2);border-radius:8px;padding:8px 10px;background:var(--bg);min-height:38px}
+.field .hint{font-size:12px;color:var(--ink-3)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.checks{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;max-height:180px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:8px}
+.checks label{display:flex;gap:6px;align-items:center;font-size:13px}
+.dlg-foot{display:flex;gap:8px;justify-content:flex-end;padding-top:4px;flex-wrap:wrap}
+.btn.danger{color:#b42318;border-color:#e4b4ae;margin-right:auto}
+.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.on{opacity:1}
+.foot{margin-top:40px;color:var(--ink-3);font-size:12px;border-top:1px solid var(--line);padding-top:12px}
+
+@media (max-width:640px){
+  .top{grid-template-columns:1fr}
+  .stats{text-align:left}
+  .row2,.checks{grid-template-columns:1fr}
+  .spacer{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1 class="marker">Think: what is the perfect next step?</h1>
+      <div class="sub">Root / Roots: every Infinite Frames app on one board. Each one needs code to run, a link and screenshots of its features.</div>
+      <div class="target">
+        <label for="target">Target:</label>
+        <input id="target" placeholder="Write the one thing to aim for next…">
+      </div>
+    </div>
+    <div class="stats" id="stats"></div>
+  </header>
+
+  <div class="bar" role="toolbar" aria-label="Board controls">
+    <div class="seg" role="group" aria-label="View">
+      <button id="vBoard" aria-pressed="true">Board</button>
+      <button id="vWeb" aria-pressed="false">Web</button>
+    </div>
+    <select class="btn" id="filter" aria-label="Show">
+      <option value="all">All apps</option>
+      <option value="works">What works (any ✓)</option>
+      <option value="progress">In progress</option>
+      <option value="idea">Not started</option>
+    </select>
+    <select class="btn" id="sort" aria-label="Order">
+      <option value="future">Newest first</option>
+      <option value="past">Oldest first</option>
+      <option value="score">Most working</option>
+    </select>
+    <span class="spacer"></span>
+    <button class="btn primary" id="addBtn">+ Add app</button>
+    <button class="btn" id="exportBtn">Export JSON</button>
+    <button class="btn" id="importBtn">Import</button>
+    <input type="file" id="importFile" accept="application/json" hidden>
+  </div>
+
+  <main id="view"></main>
+
+  <p class="foot">Click a status cell to cycle it: blank → ½ in progress → ✓ works. Your edits save in this browser. Use Export JSON to keep them or share them, then paste the result into <code>hub/apps.js</code> in the repo.</p>
+</div>
+
+<dialog id="dlg"><form method="dialog" class="dlg" id="form"></form></dialog>
+<input type="file" id="shotFile" accept="image/*" hidden>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="apps.js"></script>
+<script>
+(() => {
+const KEY = "ifhub:v1";
+const PLAT = window.HUB_PLATFORMS, COLS = window.HUB_COLUMNS;
+const PCOL = {vercel:"#111", claude:"#d97757", github:"#6e40c9", chatgpt:"#10a37f", aistudio:"#4285f4"};
+const store = {
+  get(k){ try{ return JSON.parse(localStorage.getItem(k)); }catch(e){ return null; } },
+  set(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); return true; }catch(e){ return false; } }
+};
+let saved = store.get(KEY) || {};
+let apps = Array.isArray(saved.apps) ? saved.apps : structuredClone(window.HUB_APPS);
+let ui = Object.assign({view:"board", filter:"all", sort:"future"}, saved.ui || {});
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const byId = id => apps.find(a => a.id === id);
+const score = a => COLS.reduce((s,c) => s + (a.status?.[c.id] || 0), 0);
+const kind = a => COLS.some(c => a.status?.[c.id] === 2) ? "works" : score(a) > 0 ? "progress" : "idea";
+
+function save(){ if(!store.set(KEY, {apps, ui, target: $("#target").value})) toast("Couldn't save in this browser. Use Export JSON to keep your changes."); }
+function toast(t){ const el=$("#toast"); el.textContent=t; el.classList.add("on"); clearTimeout(toast.t); toast.t=setTimeout(()=>el.classList.remove("on"),2600); }
+
+$("#target").value = saved.target || "";
+$("#target").addEventListener("input", save);
+
+function visible(){
+  let list = apps.filter(a => ui.filter === "all" || kind(a) === ui.filter);
+  const d = a => a.date || "";
+  if(ui.sort === "future") list.sort((a,b) => d(b).localeCompare(d(a)));
+  if(ui.sort === "past") list.sort((a,b) => d(a).localeCompare(d(b)));
+  if(ui.sort === "score") list.sort((a,b) => score(b) - score(a));
+  return list;
+}
+
+function renderStats(){
+  const live = apps.filter(a => a.url).length, works = apps.filter(a => kind(a)==="works").length;
+  const stitches = apps.reduce((n,a) => n + (a.links||[]).filter(byId).length, 0);
+  $("#stats").innerHTML = [[apps.length,"apps"],[live,"with a link"],[works,"working"],[stitches,"stitches"]]
+    .map(([n,l]) => `<div class="stat"><b>${n}</b><span>${l}</span></div>`).join("");
+}
+
+function cardHTML(a){
+  const p = PLAT.find(p => p.id === a.platform);
+  const shot = a.shot
+    ? `<img src="${esc(a.shot)}" alt="Screenshot of ${esc(a.name)}" loading="lazy">`
+    : `<div class="ph"><span>No screenshot yet</span><button class="btn" data-act="shot" data-id="${a.id}">Add screenshot</button></div>`;
+  const shotWrap = a.url ? `<a class="shot" href="${esc(a.url)}" target="_blank" rel="noopener" aria-label="Open ${esc(a.name)}">${shot}</a>` : `<div class="shot">${shot}</div>`;
+  const status = COLS.map(c => { const v = a.status?.[c.id] || 0;
+    return `<button data-act="cycle" data-id="${a.id}" data-col="${c.id}" data-v="${v}" title="${c.label}: ${["not yet","in progress","works"][v]}"><span class="k">${c.label}</span><span class="v">${["–","½","✓"][v]}</span></button>`; }).join("");
+  const links = [
+    a.url ? `<a class="go" href="${esc(a.url)}" target="_blank" rel="noopener">Open ↗</a>` : `<span class="links off" style="font-size:12px;padding:4px 8px;border:1px dashed var(--line-2);border-radius:6px">No link yet</span>`,
+    a.code ? `<a href="${esc(a.code)}" target="_blank" rel="noopener">Code</a>` : "",
+    a.dash ? `<a href="${esc(a.dash)}" target="_blank" rel="noopener">Dashboard</a>` : "",
+    `<button data-act="edit" data-id="${a.id}">Edit</button>`
+  ].join("");
+  const st = (a.links||[]).map(byId).filter(Boolean);
+  const into = apps.filter(b => (b.links||[]).includes(a.id));
+  const chips = [...st, ...into.filter(b => !st.includes(b))].map(b => `<button class="chip" data-act="jump" data-id="${b.id}">${esc(b.name)}</button>`).join("");
+  return `<article class="card" id="c-${a.id}">
+    ${shotWrap}
+    <div class="body">
+      <div class="title"><h3>${esc(a.name)}</h3><span class="date">${esc(a.date||"")}</span></div>
+      ${a.features ? `<p class="feat">${esc(a.features)}</p>` : ""}
+      <div class="status" role="group" aria-label="Status for ${esc(a.name)}">${status}</div>
+      <div class="links">${links}</div>
+      <div class="stitch">Stitched: ${chips || "<span>nothing yet</span>"}</div>
+    </div></article>`;
+}
+
+function renderBoard(){
+  const list = visible();
+  $("#view").innerHTML = PLAT.map(p => {
+    const items = list.filter(a => a.platform === p.id);
+    const all = apps.filter(a => a.platform === p.id).length;
+    const body = items.length ? `<div class="grid">${items.map(cardHTML).join("")}</div>`
+      : `<div class="empty">${all ? "No apps here match this filter." : `No ${esc(p.label)} apps yet. Paste a link to start this lane.`}
+         ${all ? "" : `<button class="btn" data-act="add" data-plat="${p.id}">+ Add ${esc(p.label)} app</button>`}</div>`;
+    return `<section class="lane"><div class="lane-head">
+      <h2 class="marker">${esc(p.label)}</h2>${p.main ? '<span class="main-tag">Main</span>' : ""}
+      <span class="note">${esc(p.note)}</span><span class="count">${items.length}/${all}</span></div>${body}</section>`;
+  }).join("");
+}
+
+function renderWeb(){
+  const list = visible(), ids = new Set(list.map(a => a.id));
+  const colW = 200, nodeH = 102, gap = 18, top = 52, pad = 16;
+  const pos = {};
+  let maxRows = 0;
+  PLAT.forEach((p, ci) => {
+    const items = list.filter(a => a.platform === p.id);
+    maxRows = Math.max(maxRows, items.length);
+    items.forEach((a, ri) => pos[a.id] = {x: pad + ci*colW + 16, y: top + ri*(nodeH+gap)});
+  });
+  const W = pad*2 + PLAT.length*colW, H = top + Math.max(1,maxRows)*(nodeH+gap) + 16;
+  const edges = [];
+  list.forEach(a => (a.links||[]).forEach(t => { if(ids.has(t)) edges.push([a.id,t]); }));
+  const path = ([s,t]) => {
+    const A = pos[s], B = pos[t], ax = A.x+84, ay = A.y+50, bx = B.x+84, by = B.y+50;
+    if(Math.abs(ax-bx) < 10){ const dx = 120 + Math.abs(ay-by)*0.15; return `M${A.x+168},${ay} C${A.x+168+dx},${ay} ${B.x+168+dx},${by} ${B.x+168},${by}`; }
+    const sx = ax<bx ? A.x+168 : A.x, tx = ax<bx ? B.x : B.x+168, mx = (sx+tx)/2;
+    return `M${sx},${ay} C${mx},${ay} ${mx},${by} ${tx},${by}`;
+  };
+  $("#view").innerHTML = `<div class="web-wrap"><div class="web" style="width:${W}px;height:${H}px">
+    <svg width="${W}" height="${H}" aria-hidden="true">${edges.map(e => `<path class="edge" data-s="${e[0]}" data-t="${e[1]}" d="${path(e)}"/>`).join("")}</svg>
+    ${PLAT.map((p,i) => `<div class="col-h" style="left:${pad+i*colW}px;width:${colW}px">${esc(p.label)}</div>`).join("")}
+    ${list.map(a => `<button class="node" data-act="node" data-id="${a.id}" title="${esc(a.name)}" style="left:${pos[a.id].x}px;top:${pos[a.id].y}px">
+      ${a.shot ? `<img src="${esc(a.shot)}" alt="" loading="lazy">` : `<div class="nph"></div>`}
+      <div class="nm"><span class="dot" style="background:${kind(a)==="works"?"var(--works)":kind(a)==="progress"?"var(--part)":"var(--none)"}"></span><span>${esc(a.name)}</span></div></button>`).join("")}
+  </div></div>
+  <div class="legend"><span><span class="dot" style="display:inline-block;background:var(--works)"></span> working</span>
+  <span><span class="dot" style="display:inline-block;background:var(--part)"></span> in progress</span>
+  <span><span class="dot" style="display:inline-block;background:var(--none)"></span> not started</span>
+  <span>Lines show which apps stitch together. Hover an app to light up its lines, click it to open its card.</span></div>`;
+  const web = $(".web");
+  const hot = id => {
+    web.querySelectorAll(".edge").forEach(e => e.classList.toggle("hot", !!id && (e.dataset.s===id || e.dataset.t===id)));
+    const near = new Set([id]); edges.forEach(([s,t]) => { if(s===id) near.add(t); if(t===id) near.add(s); });
+    web.querySelectorAll(".node").forEach(n => n.classList.toggle("dim", !!id && !near.has(n.dataset.id)));
+  };
+  web.addEventListener("pointerover", e => { const n = e.target.closest(".node"); hot(n ? n.dataset.id : null); });
+  web.addEventListener("pointerleave", () => hot(null));
+  web.addEventListener("focusin", e => { const n = e.target.closest(".node"); hot(n ? n.dataset.id : null); });
+}
+
+function render(){
+  $("#vBoard").setAttribute("aria-pressed", ui.view==="board");
+  $("#vWeb").setAttribute("aria-pressed", ui.view==="web");
+  $("#filter").value = ui.filter; $("#sort").value = ui.sort;
+  renderStats();
+  ui.view === "web" ? renderWeb() : renderBoard();
+}
+
+function jump(id){
+  if(ui.view !== "board"){ ui.view = "board"; render(); }
+  const el = document.getElementById("c-"+id);
+  if(!el){ ui.filter = "all"; render(); return jump(id); }
+  el.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block:"center"});
+  el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 1400);
+}
+
+/* ---------- edit / add dialog ---------- */
+function openEditor(a, isNew){
+  const f = $("#form");
+  const others = apps.filter(b => b.id !== a.id);
+  f.innerHTML = `<h2 class="marker">${isNew ? "Add an app" : "Edit " + esc(a.name)}</h2>
+    <div class="field"><label for="f-name">Name</label><input id="f-name" required value="${esc(a.name)}"></div>
+    <div class="row2">
+      <div class="field"><label for="f-plat">Platform</label><select id="f-plat">${PLAT.map(p => `<option value="${p.id}" ${p.id===a.platform?"selected":""}>${esc(p.label)}</option>`).join("")}</select></div>
+      <div class="field"><label for="f-date">Date</label><input id="f-date" type="date" value="${esc(a.date)}"></div>
+    </div>
+    <div class="field"><label for="f-url">Live link</label><input id="f-url" type="url" placeholder="https://…" value="${esc(a.url)}"></div>
+    <div class="field"><label for="f-code">Code link</label><input id="f-code" type="url" placeholder="GitHub, v0 or AI Studio link" value="${esc(a.code)}"></div>
+    <div class="field"><label for="f-shot">Screenshot</label><input id="f-shot" placeholder="Image URL or shots/file.jpg" value="${esc(a.shot && a.shot.startsWith("data:") ? "(uploaded image)" : a.shot)}">
+      <span class="hint">Or <button type="button" class="btn" id="f-upload" style="min-height:28px;padding:2px 8px">upload an image</button></span></div>
+    <div class="field"><label for="f-feat">Features</label><textarea id="f-feat" rows="3">${esc(a.features)}</textarea></div>
+    <div class="field"><label>Stitches into</label><div class="checks">${others.map(b => `<label><input type="checkbox" value="${b.id}" ${(a.links||[]).includes(b.id)?"checked":""}> ${esc(b.name)}</label>`).join("")}</div></div>
+    <div class="dlg-foot">
+      ${isNew ? "" : `<button type="button" class="btn danger" id="f-del">Delete app</button>`}
+      <button type="button" class="btn" value="cancel" id="f-cancel">Cancel</button>
+      <button type="submit" class="btn primary" value="ok">${isNew ? "Add app" : "Save changes"}</button>
+    </div>`;
+  let shotData = a.shot;
+  $("#f-cancel").onclick = () => $("#dlg").close();
+  $("#f-upload").onclick = () => pickShot(d => { shotData = d; $("#f-shot").value = "(uploaded image)"; });
+  if(!isNew) $("#f-del").onclick = () => {
+    if(!confirm(`Delete “${a.name}” from the board? You can undo this only by re-importing a saved JSON.`)) return;
+    apps = apps.filter(b => b !== a); apps.forEach(b => b.links = (b.links||[]).filter(t => t !== a.id));
+    save(); $("#dlg").close(); render(); toast(`Deleted ${a.name}`);
+  };
+  f.onsubmit = e => {
+    if(e.submitter && e.submitter.value !== "ok") return;
+    const shotIn = $("#f-shot").value.trim();
+    Object.assign(a, {
+      name: $("#f-name").value.trim() || "Untitled app", platform: $("#f-plat").value, date: $("#f-date").value,
+      url: $("#f-url").value.trim(), code: $("#f-code").value.trim(), features: $("#f-feat").value.trim(),
+      shot: shotIn === "(uploaded image)" ? shotData : shotIn,
+      links: [...f.querySelectorAll(".checks input:checked")].map(i => i.value)
+    });
+    if(isNew) apps.push(a);
+    save(); render(); toast(isNew ? `Added ${a.name}` : "Saved");
+  };
+  $("#dlg").showModal(); $("#f-name").focus();
+}
+function newApp(plat){
+  return {id: "app-" + Date.now().toString(36), platform: plat || "vercel", name: "", url: "", code: "", shot: "",
+    date: new Date().toISOString().slice(0,10), features: "", status: Object.fromEntries(COLS.map(c => [c.id,0])), links: []};
+}
+function pickShot(cb){
+  const inp = $("#shotFile"); inp.value = "";
+  inp.onchange = () => {
+    const file = inp.files[0]; if(!file) return;
+    const img = new Image(); img.onload = () => {
+      const w = Math.min(800, img.width), h = Math.round(img.height * w / img.width);
+      const c = document.createElement("canvas"); c.width = w; c.height = h; c.getContext("2d").drawImage(img,0,0,w,h);
+      cb(c.toDataURL("image/jpeg", .72)); URL.revokeObjectURL(img.src);
+    };
+    img.onerror = () => toast("That file couldn't be read as an image. Try a PNG or JPG.");
+    img.src = URL.createObjectURL(file);
+  };
+  inp.click();
+}
+
+/* ---------- events ---------- */
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-act]"); if(!b) return;
+  const a = byId(b.dataset.id);
+  switch(b.dataset.act){
+    case "cycle": a.status[b.dataset.col] = ((a.status[b.dataset.col]||0)+1)%3; save(); render(); break;
+    case "edit": openEditor(a, false); break;
+    case "jump": case "node": jump(b.dataset.id); break;
+    case "add": openEditor(newApp(b.dataset.plat), true); break;
+    case "shot": e.preventDefault(); pickShot(d => { a.shot = d; save(); render(); toast("Screenshot added"); }); break;
+  }
+});
+$("#vBoard").onclick = () => { ui.view = "board"; save(); render(); };
+$("#vWeb").onclick = () => { ui.view = "web"; save(); render(); };
+$("#filter").onchange = e => { ui.filter = e.target.value; save(); render(); };
+$("#sort").onchange = e => { ui.sort = e.target.value; save(); render(); };
+$("#addBtn").onclick = () => openEditor(newApp(), true);
+$("#exportBtn").onclick = () => {
+  const blob = new Blob([JSON.stringify(apps, null, 2)], {type:"application/json"});
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "infinite-frames-hub.json"; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000); toast("Exported infinite-frames-hub.json");
+};
+$("#importBtn").onclick = () => $("#importFile").click();
+$("#importFile").onchange = async e => {
+  try{ const data = JSON.parse(await e.target.files[0].text()); if(!Array.isArray(data)) throw 0;
+    apps = data; save(); render(); toast(`Imported ${data.length} apps`);
+  }catch(err){ toast("That file isn't a hub export. Choose a .json file saved with Export JSON."); }
+  e.target.value = "";
+};
+render();
+})();
+</script>
+</body>
+</html>
