@@ -1,0 +1,23 @@
+/* App chrome added around the Foveated Zoom engine: sign-in, who is here, others' cursors. */
+:root { --ok: #5ce0a8; }
+html, body { margin: 0; padding: 0; }
+#account { pointer-events: auto; display: flex; align-items: center; gap: 8px; }
+.signin {
+  height: 36px; padding: 0 14px 0 10px; border-radius: 18px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--ink); font: 600 13px var(--sans); display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+}
+.signin svg { width: 16px; height: 16px; flex: none; }
+.me { display: flex; align-items: center; gap: 8px; font: 500 12px var(--mono); color: var(--ink); }
+.me img, .av { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 2px var(--c, var(--ink)); background: #1a1a20; display: grid; place-items: center; font: 700 12px var(--sans); color: var(--bg); }
+.me button { height: 28px; padding: 0 10px; border-radius: 14px; border: 1px solid var(--line); background: transparent; color: var(--dim); font: 500 11px var(--sans); cursor: pointer; min-width: 0; }
+#here { display: flex; flex-direction: row-reverse; gap: 4px; align-items: center; font: 500 11px var(--mono); color: var(--dim); }
+#here .av { width: 24px; height: 24px; font-size: 10px; }
+#peers { position: fixed; inset: 0; pointer-events: none; }
+.peer { position: fixed; left: 0; top: 0; display: flex; align-items: center; gap: 5px; will-change: transform; font: 500 11px var(--mono); color: var(--ink); white-space: nowrap; }
+.peer i { width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 0 2px var(--bg); }
+.peer span { background: var(--bg); padding: 1px 5px; border-radius: 4px; border: 1px solid var(--line); }
+.note {
+  position: fixed; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 72px);
+  max-width: min(420px, calc(100vw - 32px)); padding: 10px 14px; border-radius: 12px; background: var(--panel);
+  border: 1px solid var(--line); color: var(--ink); font: 500 13px/1.4 var(--sans); text-align: center;
+}

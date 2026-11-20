@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Infinite Frames</title>
+<meta name="description" content="One canvas. Infinite perspectives. No final frame.">
+<meta name="theme-color" content="#0a0a0c">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@500;600&display=swap">
+</head>
+<body>
+<div id="stage"><canvas id="c2d"></canvas><canvas id="cgl"></canvas></div>
+<div class="focus" id="focus" aria-hidden="true"></div>
+<div id="cursors" aria-hidden="true"></div>
+
+<div class="top">
+  <div class="read">
+    <div class="depth"><small>Depth</small><span id="depth">0</span></div>
+    <div class="mag" id="mag">×1.0 total · 1.00 of 8×</div>
+    <div class="crumb" id="crumb">root</div>
+    <div class="perf" id="perf">– fps</div>
+    <div class="hint" id="hint">Pinch or scroll to zoom. Every 8× you drop into a fresh canvas. Sign in with Google and draw: everyone here sees your strokes as you make them.</div>
+  </div>
+  <div class="who">
+    <div id="account"></div>
+    <div id="here" aria-live="polite"></div>
+    <div id="people"></div>
+  </div>
+</div>
+
+<div class="bar">
+  <div class="tools" role="toolbar" aria-label="Canvas tools">
+    <div class="seg" role="group" aria-label="Mode">
+      <button id="mMove" aria-pressed="true">Move</button>
+      <button id="mDraw" aria-pressed="false">Draw</button>
+    </div>
+    <div class="sw off" id="sw" role="group" aria-label="Ink color">
+      <button data-c="#f2efe6" aria-pressed="true" aria-label="White ink"><span style="background:#f2efe6"></span></button>
+      <button data-c="#e3262d" aria-pressed="false" aria-label="Red ink"><span style="background:#e3262d"></span></button>
+      <button data-c="#f6cf1a" aria-pressed="false" aria-label="Yellow ink"><span style="background:#f6cf1a"></span></button>
+      <button data-c="#1f4fd0" aria-pressed="false" aria-label="Blue ink"><span style="background:#1f4fd0"></span></button>
+    </div>
+    <button id="bDither" class="ghost" aria-pressed="true" title="Edge style: Prism, Blocks or Off (D)">Prism</button>
+    <button id="bHome" class="ghost" title="Back to the top canvas (H)">Top</button>
+  </div>
+</div>
+
+<div id="peers" aria-hidden="true"></div>
+<div class="note" id="note" role="status" hidden></div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
