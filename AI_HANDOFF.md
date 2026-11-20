@@ -1,3 +1,5 @@
+> **IMPORTANT SOURCE-OF-TRUTH UPDATE (2026-11-20):** The owner has designated the **newest, verified cloud-connected Claude artifact** as the intended Infinite Frames foundation. We have **not yet verified its latest source or deployment**. Read [CLAUDE_BASELINE.md](CLAUDE_BASELINE.md) before making code changes. The GitHub guest-test branch is a **development reference, not an approved replacement or verified Claude baseline**. Do not begin a new app or port features until the latest Claude version is obtained, compared, and confirmed.
+
 # Infinite Frames: Shared AI Development Handoff
 
 **Canonical repository:** https://github.com/outoftheboxartist/infinite-frames  
