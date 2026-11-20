@@ -156,7 +156,11 @@ function toast(text) {
 async function googleOn() {
   try { const r = await fetch(URL + "/auth/v1/settings", { headers: { apikey: KEY } }); const s = await r.json(); return !!(s.external && s.external.google); } catch (e) { return null; }
 }
+// Google sign-in stays hidden until the Google client accepts Supabase's return address
+// (it currently answers redirect_uri_mismatch). Guests can draw and save meanwhile.
+const GOOGLE_READY = false;
 function control() {
+  if (!GOOGLE_READY && !(session && !session.user.is_anonymous)) return;
   const b = document.createElement("button");
   b.type = "button";
   const signedIn = session && !session.user.is_anonymous;
