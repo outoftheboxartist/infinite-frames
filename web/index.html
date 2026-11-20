@@ -1,53 +1,21 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><style>html,body{touch-action:pan-x pan-y;-webkit-text-size-adjust:100%;overscroll-behavior:none}</style><script>["gesturestart","gesturechange","gestureend"].forEach(function(t){document.addEventListener(t,function(e){e.preventDefault()},{passive:false})})</script><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style><style>.ifg .ifpin{visibility:hidden}</style></head><body>
 <title>Infinite Frames</title>
-<meta name="description" content="One canvas. Infinite perspectives. No final frame.">
-<meta name="theme-color" content="#0a0a0c">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@500;600&display=swap">
-</head>
-<body>
-<div id="stage"><canvas id="c2d"></canvas><canvas id="cgl"></canvas></div>
-<div class="focus" id="focus" aria-hidden="true"></div>
-<div id="cursors" aria-hidden="true"></div>
-
-<div class="top">
-  <div class="read">
-    <div class="depth"><small>Depth</small><span id="depth">0</span></div>
-    <div class="mag" id="mag">×1.0 total · 1.00 of 8×</div>
-    <div class="crumb" id="crumb">root</div>
-    <div class="perf" id="perf">– fps</div>
-    <div class="hint" id="hint">Pinch or scroll to zoom. Every 8× you drop into a fresh canvas. Sign in with Google and draw: everyone here sees your strokes as you make them.</div>
-  </div>
-  <div class="who">
-    <div id="account"></div>
-    <div id="here" aria-live="polite"></div>
-    <div id="people"></div>
-  </div>
-</div>
-
-<div class="bar">
-  <div class="tools" role="toolbar" aria-label="Canvas tools">
-    <div class="seg" role="group" aria-label="Mode">
-      <button id="mMove" aria-pressed="true">Move</button>
-      <button id="mDraw" aria-pressed="false">Draw</button>
-    </div>
-    <div class="sw off" id="sw" role="group" aria-label="Ink color">
-      <button data-c="#f2efe6" aria-pressed="true" aria-label="White ink"><span style="background:#f2efe6"></span></button>
-      <button data-c="#e3262d" aria-pressed="false" aria-label="Red ink"><span style="background:#e3262d"></span></button>
-      <button data-c="#f6cf1a" aria-pressed="false" aria-label="Yellow ink"><span style="background:#f6cf1a"></span></button>
-      <button data-c="#1f4fd0" aria-pressed="false" aria-label="Blue ink"><span style="background:#1f4fd0"></span></button>
-    </div>
-    <button id="bDither" class="ghost" aria-pressed="true" title="Edge style: Prism, Blocks or Off (D)">Prism</button>
-    <button id="bHome" class="ghost" title="Back to the top canvas (H)">Top</button>
-  </div>
-</div>
-
-<div id="peers" aria-hidden="true"></div>
-<div class="note" id="note" role="status" hidden></div>
-<script type="module" src="/src/main.js"></script>
-</body>
-</html>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+/* Dark-only design: one committed look, every color set explicitly. */
+:root{--bg:#050507;--fg:#e9eaee;--link:#8fd9ff;color-scheme:dark}
+html,body,#root{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:Manrope,system-ui,sans-serif;overscroll-behavior:none;-webkit-tap-highlight-color:transparent;overflow:hidden}
+a{color:var(--link)}*{box-sizing:border-box}
+button{font-family:inherit;color:inherit}
+::-webkit-scrollbar{width:0;height:0}
+input[type=range]{accent-color:#e9eaee}
+</style>
+<div id="root"></div>
+<script>/* window.claude for the main app: answered by src/claude-shim.js (Supabase) */
+(function(){var r;var ready=new Promise(function(res){r=res});window.__ifShimReady=r;
+window.claude={use:function(n){return ready.then(function(a){return a.use(n)})}};})();</script>
+<script type="module" src="/src/claude-shim.js"></script>
+<script src="/main-assets.js"></script>
+<script src="/main-app.js"></script>
+</body></html>
