@@ -49,6 +49,12 @@ PATCHES = [
      'k=[];h.filter(f=>!f.parent).forEach(f=>k.push({id:this.newId("e"),t:"F"+c,text:o.name+" founded "+f.name})),h.some(f=>f.parent)&&k.push({id:this.newId("e"),t:"F"+c,text:o.name+" traced "+(h.find(f=>f.parent).artwork||"an image")+" into "+h.filter(f=>f.parent).length+" curves"}),', 1),
     # and saved places only for top-level curves, not every traced region
     ('this.autoPlaces(h,v,c),', 'this.autoPlaces(h.filter(b=>!b.parent),v,c),', 1),
+    # curves marked frameOnly belong to one frame: show them only in that frame
+    ('h=[...o.B,...c.filter(f=>f.type==="boundary")].map(f=>({...f,d:this.sd(f.d,r[0]==="L"?2.2:0)}))',
+     'h=[...o.B,...c.filter(f=>f.type==="boundary")].filter(f=>!f.frameOnly||(o.frames[n]&&f.frameN===o.frames[n].n)).map(f=>({...f,d:this.sd(f.d,r[0]==="L"?2.2:0)}))', 1),
+    # ...and as faint outlines in the next frames' onion skin
+    ('N>=0&&k.push(v(o.frames[N].items,f[w-1],"g"+w))',
+     'N>=0&&(k.push(v(o.frames[N].items,f[w-1],"g"+w)),k.push(l("g",{key:"gb"+w,opacity:f[w-1]*.7,style:{pointerEvents:"none"}},o.B.filter(b=>b.frameOnly&&b.frameN===o.frames[N].n).map(b=>l("path",{key:b.id,d:b.d,fill:"none",stroke:b.color,strokeWidth:1,vectorEffect:"non-scaling-stroke"})))))', 1),
     # after publishing, post the optional "continue here" prompt
     ('this.autoPlaces(h.filter(b=>!b.parent),v,c),this.flashToast("Published to Frame "+c+". Locked in place.")',
      'this.autoPlaces(h.filter(b=>!b.parent),v,c),window.__ifAfterPublish&&window.__ifAfterPublish(this,h,v,c),this.flashToast("Published to Frame "+c+". Locked in place.")', 1),

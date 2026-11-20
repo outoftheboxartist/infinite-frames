@@ -119,6 +119,8 @@ function nestedRegions(v, parent) {
   return out.sort((a, b) => b.area - a.area).slice(0, MAX_REGIONS);
 }
 
+window.__ifNested = nestedRegions; // also used to import video frames
+
 /* ---------- 3: name the artwork ---------- */
 function ask(regionCount) {
   return new Promise((resolve) => {
