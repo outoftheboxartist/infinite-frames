@@ -42,6 +42,14 @@ PATCHES = [
     # minimum closed-loop size is on screen, not in canvas units
     ("if(i.length<4||l.w<40||l.h<40){",
      "if(i.length<4||l.w<40/this.cv().z||l.h<40/this.cv().z){", 1),
+    # fast renderer: once it is running, the 2D SVG ("ifv-" prefix) stops building an
+    # element per stroke and traced shape; it keeps the closed curves used for tapping.
+    # 3D layers and thumbnails (other prefixes) are unchanged.
+    ("v=(f,w,N)=>l(\"g\",{key:N,opacity:w},f.filter(",
+     "v=(f,w,N)=>r===\"ifv-\"&&window.__ifFast?null:l(\"g\",{key:N,opacity:w},f.filter(", 1),
+    # frame-strip thumbnails: a small cached picture from the fast renderer instead of an SVG copy
+    ('el:i("svg",{viewBox:"0 0 1000 1000",width:"100%",height:"100%",style:{display:"block"}},...this.art(B,"t"+B+"-",{base:!0}))',
+     'el:window.__ifFast&&window.__ifThumb?i("img",{src:window.__ifThumb(B),alt:"",style:{display:"block",width:"100%",height:"100%"}}):i("svg",{viewBox:"0 0 1000 1000",width:"100%",height:"100%",style:{display:"block"}},...this.art(B,"t"+B+"-",{base:!0}))', 1),
     # path coordinates keep enough decimals for the current depth
     ("function ls(e){const t=e.length,n=i=>i.toFixed(1);",
      "function ls(e){const t=e.length,n=i=>i.toFixed(window.__ifDec||1);", 1),
