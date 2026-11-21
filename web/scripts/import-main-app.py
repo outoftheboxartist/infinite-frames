@@ -55,6 +55,12 @@ PATCHES = [
     # ...and as faint outlines in the next frames' onion skin
     ('N>=0&&k.push(v(o.frames[N].items,f[w-1],"g"+w))',
      'N>=0&&(k.push(v(o.frames[N].items,f[w-1],"g"+w)),k.push(l("g",{key:"gb"+w,opacity:f[w-1]*.7,style:{pointerEvents:"none"}},o.B.filter(b=>b.frameOnly&&b.frameN===o.frames[N].n).map(b=>l("path",{key:b.id,d:b.d,fill:"none",stroke:b.color,strokeWidth:1,vectorEffect:"non-scaling-stroke"})))))', 1),
+    # 3D layers are drawn as an SVG picture, which can't load image files: use small inline copies
+    ("else if(p.src)g='<image href=\"'+E(p.src)+'\"",
+     "else if(p.src)g='<image href=\"'+E(window.__ifLayerSrc?window.__ifLayerSrc(p.src,this):p.src)+'\"", 1),
+    # 3D layers show only their own frame's curves
+    ('B=o.B.map(b=>({...b,d:this.sd(b.d,2.2)}));let defs=""',
+     'B=o.B.filter(b=>!b.frameOnly||b.frameN===fr.n).map(b=>({...b,d:this.sd(b.d,2.2)}));let defs=""', 1),
     # after publishing, post the optional "continue here" prompt
     ('this.autoPlaces(h.filter(b=>!b.parent),v,c),this.flashToast("Published to Frame "+c+". Locked in place.")',
      'this.autoPlaces(h.filter(b=>!b.parent),v,c),window.__ifAfterPublish&&window.__ifAfterPublish(this,h,v,c),this.flashToast("Published to Frame "+c+". Locked in place.")', 1),

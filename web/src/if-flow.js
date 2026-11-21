@@ -121,6 +121,36 @@ function nestedRegions(v, parent) {
 
 window.__ifNested = nestedRegions; // also used to import video frames
 
+/* ---------- 3D layers: inline copies of image files ----------
+ * The 3D view draws each frame as one SVG picture, and an SVG picture cannot load image
+ * files from elsewhere. So each image is loaded once, shrunk, and inlined as a data URL.
+ * Until it is ready the original address is used (blank in 3D), then the layers redraw. */
+const layerCache = new Map(); // src -> data URL | "pending" | "failed"
+window.__ifLayerSrc = (src, app) => {
+  if (!src || src.startsWith("data:")) return src;
+  const hit = layerCache.get(src);
+  if (hit && hit !== "pending" && hit !== "failed") return hit;
+  if (!hit) {
+    layerCache.set(src, "pending");
+    const im = new Image();
+    im.crossOrigin = "anonymous";
+    im.onload = () => {
+      try {
+        const k = Math.min(1, 768 / Math.max(im.naturalWidth, im.naturalHeight));
+        const c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(im.naturalWidth * k)); c.height = Math.max(1, Math.round(im.naturalHeight * k));
+        c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+        layerCache.set(src, c.toDataURL("image/webp", 0.85));
+        app._li = new WeakMap(); // drop cached layers so they redraw with the copy
+        app.forceUpdate();
+      } catch (e) { layerCache.set(src, "failed"); }
+    };
+    im.onerror = () => layerCache.set(src, "failed");
+    im.src = src;
+  }
+  return src;
+};
+
 /* ---------- 3: name the artwork ---------- */
 function ask(regionCount) {
   return new Promise((resolve) => {
