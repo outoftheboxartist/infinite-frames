@@ -17,3 +17,13 @@ finally two lights again, each holding the whole story. Frame titles and lines a
 Inspired by, not copied from, reference images the founder shared (threshold portal, field of light,
 discipline / surrender / flow, chaos as unrecognised pattern). Only the founder's own works appear.
 The canvas before TWOFOLD is backed up in `archive/canvas-before-twofold-2026-11-21.json`.
+
+## Vector version (current)
+
+The frames on the canvas are now native vector art, not images.
+
+- `trace_sources.js` traces the fish and IF logo once into `sources.json` (run against `web/dist`).
+- `vector.py` builds all 20 frames as smooth closed cubic curves into `vector.json`. Frame 1 is two spheres; every frame adds more detail. Selectable curves per frame are capped at 2 + 8·(n−1), largest first.
+- `preview.js` renders a contact sheet.
+- `build_vec_rows.py` turns it into `ifm_docs` rows: vector items in ≤180KB chunks (`i-twofold-NN-vMM`, the painted frame kept as `orig` on part 1 so it can be traced later) and `frameOnly` curves (`b-twofold-fNN-MMM`).
+- `apply.py` swaps them in through the Supabase Management API.

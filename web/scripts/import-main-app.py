@@ -61,6 +61,9 @@ PATCHES = [
     # 3D layers show only their own frame's curves
     ('B=o.B.map(b=>({...b,d:this.sd(b.d,2.2)}));let defs=""',
      'B=o.B.filter(b=>!b.frameOnly||b.frameN===fr.n).map(b=>({...b,d:this.sd(b.d,2.2)}));let defs=""', 1),
+    # smooth curves (C, Q, A commands) are drawn as they are; the simplifier is for traced polylines
+    ('sd(d,T0){const T=T0||.45;if(!d||d.length<(T0?400:1500))return d;',
+     'sd(d,T0){const T=T0||.45;if(!d||d.length<(T0?400:1500)||/[CcQqAa]/.test(d))return d;', 1),
     # after publishing, post the optional "continue here" prompt
     ('this.autoPlaces(h.filter(b=>!b.parent),v,c),this.flashToast("Published to Frame "+c+". Locked in place.")',
      'this.autoPlaces(h.filter(b=>!b.parent),v,c),window.__ifAfterPublish&&window.__ifAfterPublish(this,h,v,c),this.flashToast("Published to Frame "+c+". Locked in place.")', 1),
