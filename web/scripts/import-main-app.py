@@ -54,7 +54,7 @@ PATCHES = [
      'h=[...o.B,...c.filter(f=>f.type==="boundary")].filter(f=>!f.frameOnly||(o.frames[n]&&f.frameN===o.frames[n].n)).map(f=>({...f,d:this.sd(f.d,r[0]==="L"?2.2:0)}))', 1),
     # ...and as faint outlines in the next frames' onion skin
     ('N>=0&&k.push(v(o.frames[N].items,f[w-1],"g"+w))',
-     'N>=0&&(k.push(v(o.frames[N].items,f[w-1],"g"+w)),k.push(l("g",{key:"gb"+w,opacity:f[w-1]*.7,style:{pointerEvents:"none"}},o.B.filter(b=>b.frameOnly&&b.frameN===o.frames[N].n).map(b=>l("path",{key:b.id,d:b.d,fill:"none",stroke:b.color,strokeWidth:1,vectorEffect:"non-scaling-stroke"})))))', 1),
+     'N>=0&&(k.push(v(o.frames[N].items,f[w-1],"g"+N)),k.push(l("g",{key:"gb"+N,opacity:f[w-1]*.7,style:{pointerEvents:"none"}},o.B.filter(b=>b.frameOnly&&b.frameN===o.frames[N].n).map(b=>l("path",{key:b.id,d:b.d,fill:"none",stroke:b.color,strokeWidth:1,vectorEffect:"non-scaling-stroke"})))))', 1),
     # 3D layers are drawn as an SVG picture, which can't load image files: use small inline copies
     ("else if(p.src)g='<image href=\"'+E(p.src)+'\"",
      "else if(p.src)g='<image href=\"'+E(window.__ifLayerSrc?window.__ifLayerSrc(p.src,this):p.src)+'\"", 1),
@@ -64,6 +64,20 @@ PATCHES = [
     # smooth curves (C, Q, A commands) are drawn as they are; the simplifier is for traced polylines
     ('sd(d,T0){const T=T0||.45;if(!d||d.length<(T0?400:1500))return d;',
      'sd(d,T0){const T=T0||.45;if(!d||d.length<(T0?400:1500)||/[CcQqAa]/.test(d))return d;', 1),
+    # zoom goes much deeper than 8x (window.__ifMaxZ, set in src/if-flow.js) so nested art can be explored
+    ('setView(n){const r=Math.max(1,Math.min(8,n.z))',
+     'setView(n){const r=Math.max(1,Math.min(window.__ifMaxZ||8,n.z))', 1),
+    # while playing, the 2D view keeps every earlier frame faintly underneath: the film stacks up
+    ('const f=[.42,.2,.09];for(let w=o.ghosts;w>=1;w--){const N=n-w;',
+     'const G=o.playing?n:o.ghosts,f=o.playing?Array.from({length:G},(_,j)=>Math.max(.06,.5*Math.pow(.86,j))):[.42,.2,.09];for(let w=G;w>=1;w--){const N=n-w;', 1),
+    # 3D layers are see-through: no tinted plate or outline, so the art itself forms the shape
+    ('background:f===0?"#000":i.gap>2?"rgba(150,170,210,.07)":"transparent",outline:i.gap>2?"1px solid rgba(255,255,255,.22)":"none"',
+     'background:"transparent",outline:"none",display:r.playing&&f>r.viewing?"none":void 0', 1),
+    ("body+='<path d=\"'+E(b.d)+'\" fill=\"rgba(5,6,9,.66)\"/>'", "0", 1),
+    ("B.forEach(b=>{body+='<path d=\"'+E(b.d)+'\" fill=\"none\"", "B.forEach(b=>{if(b.ghost||b.frameOnly)return;body+='<path d=\"'+E(b.d)+'\" fill=\"none\"", 1),
+    # "Take me somewhere" can follow hidden paths first (src/if-flow.js)
+    ('U(this,"takeMe",()=>{const n=this.state;',
+     'U(this,"takeMe",()=>{if(window.__ifTakeMe&&window.__ifTakeMe(this))return;const n=this.state;', 1),
     # after publishing, post the optional "continue here" prompt
     ('this.autoPlaces(h.filter(b=>!b.parent),v,c),this.flashToast("Published to Frame "+c+". Locked in place.")',
      'this.autoPlaces(h.filter(b=>!b.parent),v,c),window.__ifAfterPublish&&window.__ifAfterPublish(this,h,v,c),this.flashToast("Published to Frame "+c+". Locked in place.")', 1),

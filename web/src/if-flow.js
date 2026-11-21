@@ -223,3 +223,23 @@ window.__ifAfterPublish = (app, boundaries, items) => {
     app.props.backend.sendMessage(msg).catch((e) => console.warn("prompt not posted", e));
   }
 };
+
+/* ---------- deep zoom and hidden paths ----------
+ * Zoom goes far past 8x so art can hide whole worlds inside a dot.
+ * Places with a `trail` (name) and `step` (1, 2, 3…) form a hidden path: "Take me somewhere"
+ * walks the paths stop by stop, deeper each time, with an ordinary random hop between paths. */
+window.__ifMaxZ = 50000;
+let trailI = 0, hopNext = false;
+window.__ifTakeMe = (app) => {
+  const stops = (app.state.places || []).filter((p) => p.trail && p.view)
+    .sort((a, b) => (a.trail < b.trail ? -1 : a.trail > b.trail ? 1 : a.step - b.step));
+  if (!stops.length) return false;
+  if (hopNext) { hopNext = false; return false; }
+  const p = stops[trailI % stops.length];
+  trailI++;
+  const next = stops[trailI % stops.length];
+  if (!next || next.trail !== p.trail) hopNext = true;
+  app.goPlace(p);
+  app.flashToast(p.name + (p.hint ? " · " + p.hint : ""));
+  return true;
+};

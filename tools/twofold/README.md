@@ -27,3 +27,15 @@ The frames on the canvas are now native vector art, not images.
 - `preview.js` renders a contact sheet.
 - `build_vec_rows.py` turns it into `ifm_docs` rows: vector items in ≤180KB chunks (`i-twofold-NN-vMM`, the painted frame kept as `orig` on part 1 so it can be traced later) and `frameOnly` curves (`b-twofold-fNN-MMM`).
 - `apply.py` swaps them in through the Supabase Management API.
+
+## TWOFOLD II: the helix (current)
+
+24 frames, turning 15 degrees each. Two grey dots become two yin-yang fish, gain colour and
+detail, are joined by a bridge, and open into a galaxy. Stacked in 3D the dots trace a double
+helix and the bridges are its rungs. Every dot holds a galaxy, four levels deep, with a tiny
+yin-yang at the bottom. Three hidden paths are saved as places that "Take me somewhere" follows.
+
+    python3 helix.py              # helix.json (about 3.8 MB of smooth vector paths)
+    node helix_preview.js <dir>   # contact sheet + deep-zoom crops of each hidden path
+    python3 build_helix_rows.py   # hbatch*.sql
+    python3 apply_helix.py        # replace the film on the live canvas (Supabase management API)
