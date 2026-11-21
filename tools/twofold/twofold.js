@@ -189,9 +189,13 @@
   const BAYER = [0, 32, 8, 40, 2, 34, 10, 42, 48, 16, 56, 24, 50, 18, 58, 26, 12, 44, 4, 36, 14, 46, 6, 38, 60, 28, 52, 20, 62, 30, 54, 22, 3, 35, 11, 43, 1, 33, 9, 41, 51, 19, 59, 27, 49, 17, 57, 25, 15, 47, 7, 39, 13, 45, 5, 37, 63, 31, 55, 23, 61, 29, 53, 21];
   function ditherFringe(g, strength = 1) {
     const im = g.getImageData(0, 0, S, S), d = im.data;
-    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-      const i = (y * S + x) * 4, a = d[i + 3];
+    const A0 = new Uint8Array(S * S); for (let i = 0; i < S * S; i++) A0[i] = d[i * 4 + 3];
+    for (let y = 1; y < S - 1; y++) for (let x = 1; x < S - 1; x++) {
+      const j = y * S + x, i = j * 4, a = d[i + 3];
       if (a < 6 || a > 150) continue;
+      // only real edges: where transparency changes fast; soft fills stay smooth
+      const grad = Math.abs(A0[j + 1] - A0[j - 1]) + Math.abs(A0[j + S] - A0[j - S]);
+      if (grad < 18) continue;
       const th = (BAYER[(y & 7) * 8 + (x & 7)] / 64) * 150;
       if (a < th * strength) { d[i + 3] = 0; continue; }
       // edge pixels that survive turn into saturated spectral sparkle

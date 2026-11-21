@@ -10,7 +10,7 @@ const uid = data.user.id;
 const out = [];
 for (let k = 1; k <= 20; k++) {
   const name = 'f' + String(k).padStart(2, '0') + '.webp';
-  const p = `${uid}/twofold/${name}`;
+  const p = `${uid}/twofold-v2/${name}`;
   const { error: e } = await sb.storage.from('ifm-assets').upload(p, fs.readFileSync(path.join(DIR, 'out', name)), { contentType: 'image/webp', upsert: true });
   if (e) { console.error(name, e.message); process.exit(1); }
   out.push({ k, path: p, url: sb.storage.from('ifm-assets').getPublicUrl(p).data.publicUrl });
