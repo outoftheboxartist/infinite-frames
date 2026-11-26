@@ -2,7 +2,8 @@
  *
  * A window (closed curve) can carry a question. Opening that window asks for your answer
  * first. You answer blind, then see what everyone else said and judge it: agree, disagree,
- * or add a different opinion. Agreement on your answers is your standing:
+ * or add a different opinion. Agreement on your answers, and on the questions you ask, is
+ * your standing:
  *   - strokes you drew after an answer grow as people agree with that answer
  *   - standing 3 unlocks a bigger brush, standing 6 unlocks colours outside a window's rule
  *
@@ -29,8 +30,8 @@ const net = (m) => (m.agree || 0) - (m.disagree || 0);
 export const questionFor = (app, bid) => { const q = chat(app).filter((m) => m.q && m.b === bid); return q[q.length - 1] || null; };
 export const answersFor = (app, qid) => chat(app).filter((m) => m.a && m.parent === qid);
 const myAnswer = (app, q) => answersFor(app, q.id).find((m) => m.whoId === app.props.uid && !m.alt) || null;
-/** Standing: agreement on everything you answered, never below zero. */
-export const standing = (app) => Math.max(0, chat(app).filter((m) => m.a && m.whoId === app.props.uid).reduce((s, m) => s + net(m), 0));
+/** Standing: agreement on everything you answered and every question you asked, never below zero. */
+export const standing = (app) => Math.max(0, chat(app).filter((m) => (m.a || m.q) && m.whoId === app.props.uid).reduce((s, m) => s + net(m), 0));
 const published = (app, bid) => app.state.B.find((b) => b.id === bid) || null;
 const canAsk = (app, b) => !!b && (b.founderId === app.props.uid || !!app.props.owner);
 
@@ -135,6 +136,12 @@ function render(focus) {
     const mine = all.filter((m) => m.whoId === app.props.uid), others = dialog.order.map((id) => all.find((m) => m.id === id)).filter((m) => m && m.whoId !== app.props.uid);
     title.textContent = q.text;
     note.textContent = q.whoId === app.props.uid && !mine.length ? "Your question. Judge the answers as they come in." : "The window is open. Now judge what the others said: agreement grows their strokes, and theirs grows yours.";
+    // the question is judged too: a good question rewards the person who asked it
+    if (q.whoId !== app.props.uid && !app.state.voted[q.id]) {
+      const judge = (kind) => () => { app.castVote(q, kind); setTimeout(() => render(false), 0); };
+      const r = row(el("span", MONO + ";align-self:center;margin-right:auto", "THE QUESTION"), button("Good question", SMALL, judge("agree")), button("Not for me", SMALL, judge("disagree")));
+      card.append(r);
+    }
     const list = el("div", "display:grid;gap:8px");
     const item = (m) => {
       const yours = m.whoId === app.props.uid, voted = !!app.state.voted[m.id];

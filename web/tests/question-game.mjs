@@ -35,6 +35,9 @@ await page.click("[role=dialog] button[type=submit]");
 await page.waitForFunction(() => /Paying attention/.test(document.querySelector("[role=dialog]").textContent));
 let reveal = await page.textContent("[role=dialog]");
 assert.match(reveal, /Staying\./); assert.doesNotMatch(reveal, /MJFH · \d/, "counts hidden until you vote");
+// the question itself can be judged, which rewards whoever asked it
+await page.click("[role=dialog] button:has-text('Good question')");
+await page.waitForFunction(() => window.__ifApp.state.chat.find((m) => m.id === "q1").agree === 1);
 await page.click("[role=dialog] button:has-text('Agree')");
 await page.waitForFunction(() => /1 AGREE/.test(document.querySelector("[role=dialog]").textContent));
 await shot("2-reveal");
