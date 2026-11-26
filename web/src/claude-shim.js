@@ -10,10 +10,13 @@
  * It also adds one small control: a sign-in button in the top-right corner.
  */
 import { createClient } from "@supabase/supabase-js";
+import { spaceFrom, toDb, fromDb, inSpace, scope } from "./space.js";
 
 const URL = import.meta.env.VITE_SUPABASE_URL || "https://xqfevafhjbdulhcqcmao.supabase.co";
 const KEY = import.meta.env.VITE_SUPABASE_KEY || "sb_publishable_olDMWJAdn9VYjJLK9E29eA_BOIANXmO";
 const T = "ifm_docs";
+const SPACE = spaceFrom(location.search); // which universe this address opens (see space.js)
+window.__ifSpace = SPACE;
 const sb = createClient(URL, KEY, { auth: { flowType: "pkce", persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 
 const fail = (e) => {
@@ -30,14 +33,14 @@ const atOf = (o) => (o && typeof o.at === "number" && isFinite(o.at) ? Math.roun
 async function fetchAll(coll) {
   const out = [];
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await sb.from(T).select("id,data").eq("coll", coll).order("at", { ascending: true, nullsFirst: true }).range(from, from + 999);
+    const { data, error } = await scope(SPACE, sb.from(T).select("id,data").eq("coll", coll)).order("at", { ascending: true, nullsFirst: true }).order("id").range(from, from + 999);
     if (error) throw fail(error);
-    out.push(...data);
+    out.push(...data.map((r) => ({ id: fromDb(SPACE, r.id), data: r.data })));
     if (data.length < 1000) return out;
   }
 }
 async function fetchOne(coll, id) {
-  const { data, error } = await sb.from(T).select("data").eq("coll", coll).eq("id", id).maybeSingle();
+  const { data, error } = await sb.from(T).select("data").eq("coll", coll).eq("id", toDb(SPACE, id)).maybeSingle();
   if (error) throw fail(error);
   return data ? data.data : null;
 }
@@ -55,8 +58,9 @@ function collection(coll) {
         cb({ docs, docChanges: () => changes });
       };
       const apply = async (p) => {
-        const row = p.new && p.new.id ? p.new : p.old;
-        if (!row || !row.id) return;
+        const raw = p.new && p.new.id ? p.new : p.old;
+        if (!raw || !raw.id || !inSpace(SPACE, raw.id)) return; // another universe's document
+        const row = { ...raw, id: fromDb(SPACE, raw.id) };
         if (p.eventType === "DELETE") {
           const old = map.get(row.id); map.delete(row.id);
           emit([{ type: "removed", doc: snapDoc(row.id, old || null) }]);
@@ -91,15 +95,15 @@ const db = {
     return {
       async get() { return snapDoc(id, await fetchOne(coll, id)); },
       async set(obj) {
-        const { error } = await sb.from(T).upsert({ coll, id, data: obj, at: atOf(obj), updated_at: new Date().toISOString() }, { onConflict: "coll,id" });
+        const { error } = await sb.from(T).upsert({ coll, id: toDb(SPACE, id), data: obj, at: atOf(obj), updated_at: new Date().toISOString() }, { onConflict: "coll,id" });
         if (error) throw fail(error);
       },
       async update(patch) {
-        const { error } = await sb.rpc("ifm_merge", { p_coll: coll, p_id: id, p_patch: patch });
+        const { error } = await sb.rpc("ifm_merge", { p_coll: coll, p_id: toDb(SPACE, id), p_patch: patch });
         if (error) throw fail(error);
       },
       async delete() {
-        const { error } = await sb.from(T).delete().eq("coll", coll).eq("id", id);
+        const { error } = await sb.from(T).delete().eq("coll", coll).eq("id", toDb(SPACE, id));
         if (error) throw fail(error);
       },
     };
@@ -116,7 +120,7 @@ const user = {
 
 /* ---------- room (who is here) ---------- */
 function makeRoom(key) {
-  const ch = sb.channel("ifm-room", { config: { presence: { key } } });
+  const ch = sb.channel("ifm-room-" + SPACE, { config: { presence: { key } } });
   let joined = false, mine = null;
   const listeners = new Set();
   ch.on("presence", { event: "sync" }, () => {
@@ -202,6 +206,8 @@ function control() {
     } catch (e) {}
   }
   if (session) { try { isAdmin = !!(await sb.rpc("ifm_is_admin")).data; } catch (e) {} }
+  // a universe nobody has opened yet starts with one empty, open frame
+  if (session && SPACE !== "archive") { try { if (!(await fetchOne("frames", "1"))) await db.doc("frames/1").set({ n: 1, status: "open" }); } catch (e) {} }
   const room = makeRoom(session ? session.user.id : "viewer-" + Math.random().toString(36).slice(2, 10));
   const api = { use: async (name) => ({ db, room, user, assets: session ? assets : null }[name] || null) };
   window.__ifShimReady(api);

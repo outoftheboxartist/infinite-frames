@@ -44,3 +44,10 @@ Check it end to end against the demo backend:
 npx vite --port 5199 &
 node tests/question-game.mjs
 ```
+
+## Universes
+
+`src/space.js`. One table holds every universe; a universe's documents carry its name at the
+front of their id. The plain address opens the game's universe (`game`, which starts empty),
+`?space=archive` opens the original shared canvas untouched, and `?space=<name>` opens or starts
+any other. Nothing is moved or deleted. Check: `node tests/space.mjs`.

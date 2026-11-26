@@ -174,7 +174,7 @@ function render(focus) {
 /* ---------- the pill: the selected window's question, always one tap away ---------- */
 const pill = el("button", "position:fixed;z-index:9000;left:50%;transform:translateX(-50%);max-width:min(340px,calc(100vw - 32px));height:36px;padding:0 14px;border-radius:18px;border:1px solid rgba(255,255,255,.18);background:rgba(10,12,16,.88);color:#e9eaee;font:600 12px Manrope,system-ui,sans-serif;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis");
 pill.type = "button"; pill.id = "ifq-pill"; pill.hidden = true;
-pill.onclick = () => { const app = window.__ifApp; if (app && app.state.selected) open(app, app.state.selected); };
+pill.onclick = () => { const app = window.__ifApp; if (!app) return; if (app.state.selected) open(app, app.state.selected); else app.setState({ tool: "curve", panel: null }); };
 
 let lastKey = "", lastLevel = null;
 function tick() {
@@ -182,7 +182,9 @@ function tick() {
   if (!app || !app.state) return;
   if (!pill.isConnected && document.body) document.body.appendChild(pill);
   const st = app.state, b = st.mode === "2d" && st.selected ? published(app, st.selected) : null, q = b && questionFor(app, b.id);
-  const text = q ? "Q · " + q.text + " · " + answersFor(app, q.id).length : b && canAsk(app, b) ? "+ Ask this window a question" : "";
+  // an empty universe says how to begin
+  const empty = st.mode === "2d" && !st.B.length && !st.drafts.length && !st.selected && app.props.backend.mode !== "local";
+  const text = q ? "Q · " + q.text + " · " + answersFor(app, q.id).length : b && canAsk(app, b) ? "+ Ask this window a question" : empty ? "Empty universe · draw a closed loop to begin" : "";
   pill.hidden = !text || !!dialog || !!st.toast;
   // top of the canvas, centred on it
   const stage = app.svgEl && app.svgEl.parentElement && app.svgEl.parentElement.parentElement && app.svgEl.parentElement.parentElement.parentElement;
