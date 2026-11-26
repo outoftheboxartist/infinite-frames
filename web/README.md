@@ -27,3 +27,27 @@ Supabase project and key default to the existing Infinite Frames project; overri
    Client ID and Client secret, save.
 3. Supabase dashboard → Authentication → URL Configuration: add the Vercel address
    (for example `https://infinite-frames-web.vercel.app`) to Redirect URLs, and set it as Site URL.
+
+## The question game
+
+`src/if-game.js`, hooked into the main app by patches in `scripts/import-main-app.py`.
+A window's founder can give it a question. Opening that window asks for your answer first
+(blind: other answers stay hidden until yours is in), then shows everyone's answers to judge with
+agree / disagree / different opinion. Agreement on your answers is your standing: strokes drawn
+after an answer grow with it, standing 3 adds a bigger brush, standing 6 adds colours outside the
+window's colour rule. Questions and answers are ordinary idea messages (`q`, `a`, `b`, `parent`),
+so nothing changes in the database.
+
+Check it end to end against the demo backend:
+
+```
+npx vite --port 5199 &
+node tests/question-game.mjs
+```
+
+## Universes
+
+`src/space.js`. One table holds every universe; a universe's documents carry its name at the
+front of their id. The plain address opens the game's universe (`game`, which starts empty),
+`?space=archive` opens the original shared canvas untouched, and `?space=<name>` opens or starts
+any other. Nothing is moved or deleted. Check: `node tests/space.mjs`.
