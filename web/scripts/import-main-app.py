@@ -81,6 +81,32 @@ PATCHES = [
     # after publishing, post the optional "continue here" prompt
     ('this.autoPlaces(h.filter(b=>!b.parent),v,c),this.flashToast("Published to Frame "+c+". Locked in place.")',
      'this.autoPlaces(h.filter(b=>!b.parent),v,c),window.__ifAfterPublish&&window.__ifAfterPublish(this,h,v,c),this.flashToast("Published to Frame "+c+". Locked in place.")', 1),
+    # ---- the question game (src/if-game.js) ----
+    # opening a window that has a question asks for your answer first
+    ('r.palette[0]}),this.isLive()?this.lockedHere(n)',
+     'r.palette[0]}),window.__ifOnSelect&&window.__ifOnSelect(this,r),this.isLive()?this.lockedHere(n)', 1),
+    # ...and drawing in it waits for that answer; strokes remember which answer opened the window
+    ('this.isLive()&&r.tool==="draw"&&!this.lockedHere(r.selected)&&r.selected?this.setState({live:{type:"stroke",b:r.selected,color:r.color,w:r.brush,pts:[[i.x,i.y]]}})',
+     'this.isLive()&&r.tool==="draw"&&!this.lockedHere(r.selected)&&r.selected&&(!window.__ifGate||window.__ifGate(this,r.selected))?this.setState({live:{type:"stroke",b:r.selected,color:r.color,w:r.brush,ans:window.__ifAns?window.__ifAns(this,r.selected):null,pts:[[i.x,i.y]]}})', 1),
+    ('this.addDraft({type:"stroke",b:i.b,color:i.color,w:i.w,d:this.line(i.pts)})',
+     'this.addDraft({type:"stroke",b:i.b,color:i.color,w:i.w,d:this.line(i.pts),...(i.ans?{ans:i.ans}:{})})', 1),
+    # strokes grow as the crowd agrees with the answer behind them
+    ('stroke:p.color,strokeWidth:p.w,strokeLinecap:"round"',
+     'stroke:p.color,strokeWidth:p.w*(p.ans&&window.__ifGrow?window.__ifGrow(this,p.ans):1),strokeLinecap:"round"', 1),
+    # standing earned from agreement unlocks colours outside a window's colour rule, and a bigger brush
+    ('Zt=w?w.palette:Object.values(r),',
+     'Zt=w?(window.__ifPalette?window.__ifPalette(this,w,Object.values(r)):w.palette):Object.values(r),', 1),
+    ('selPalette:(w?w.palette:[]).map(T)', 'selPalette:(w?Zt:[]).map(T)', 1),
+    ('brushOpts:[6,12,22].map(', 'brushOpts:(window.__ifBrushes?window.__ifBrushes(this):[6,12,22]).map(', 1),
+    ('brushCycle:()=>this.setState({brush:n.brush===6?12:n.brush===12?22:6})',
+     'brushCycle:()=>this.setState({brush:(b=>b[(b.indexOf(n.brush)+1)%b.length])(window.__ifBrushes?window.__ifBrushes(this):[6,12,22])})', 1),
+    # answers stay hidden (chat list and canvas pins) until you have answered that question yourself
+    ('qt=n.chat.filter(x=>(n.chatTab!=="ideas"||x.idea)&&!(x.idea&&!x.mine&&n.voted[x.id]))',
+     'qt=n.chat.filter(x=>(n.chatTab!=="ideas"||x.idea)&&!(x.idea&&!x.mine&&n.voted[x.id])&&!(window.__ifHidden&&window.__ifHidden(this,x)))', 1),
+    ('d=l?[]:n.chat.filter(x=>x.loc).map(', 'd=l?[]:n.chat.filter(x=>x.loc&&!(window.__ifHidden&&window.__ifHidden(this,x))).map(', 1),
+    # the crowd judges: you cannot vote on your own words
+    ('castVote(n,r){const i=this.state;if(i.voted[n.id])',
+     'castVote(n,r){const i=this.state;if(n.whoId===this.props.uid){this.flashToast("That one is yours. Others judge it.");return}if(i.voted[n.id])', 1),
 ]
 for old, new, n in PATCHES:
     k = code.count(old)
@@ -93,6 +119,7 @@ boot = """<script>/* window.claude for the main app: answered by src/claude-shim
 window.claude={use:function(n){return ready.then(function(a){return a.use(n)})}};})();</script>
 <script type="module" src="/src/claude-shim.js"></script>
 <script type="module" src="/src/if-flow.js"></script>
+<script type="module" src="/src/if-game.js"></script>
 <script src="/main-assets.js"></script>
 <script src="/main-app.js"></script>
 </body></html>
